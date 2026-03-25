@@ -120,7 +120,18 @@ pnpm dev
 ```bash
 pnpm build
 pnpm test
+pnpm lint
 ```
+
+## Lint 与保存自动修复
+
+项目已接入 `oxlint`：
+
+- 运行检查：`pnpm lint`
+- 自动修复：`pnpm lint:fix`
+- 编辑器保存自动修复：依赖工作区 [`.vscode/settings.json`](/Users/yuzili/Projects/agents/schedule-assistant/.vscode/settings.json) 中的 `source.fixAll.oxc`
+
+推荐安装 [`.vscode/extensions.json`](/Users/yuzili/Projects/agents/schedule-assistant/.vscode/extensions.json) 里的 `oxc.oxc-vscode` 扩展。
 
 ## 后续可扩展方向
 
