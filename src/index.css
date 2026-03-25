@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #f4efe6;
+  --panel: rgba(255, 250, 241, 0.78);
+  --panel-strong: #fffaf0;
+  --line: rgba(107, 79, 41, 0.16);
+  --text: #2f2418;
+  --muted: #705a3d;
+  --brand: #a44b1a;
+  --brand-deep: #7e3410;
+  --accent: #e7c16c;
+  --success: #1f7a5c;
+  --warn: #b65d1d;
+  font-family: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(231, 193, 108, 0.35), transparent 28%),
+    radial-gradient(circle at top right, rgba(164, 75, 26, 0.18), transparent 30%),
+    linear-gradient(180deg, #f8f4ec 0%, #f1ebdf 100%);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.glass {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 16px 44px rgba(92, 62, 23, 0.1);
+}
