@@ -13,7 +13,7 @@ import {
   toolDefinitions,
 } from "../data/mock";
 import { ChatItem, ModelSettings } from "../types/chat";
-import { generateWithDynamicModel } from "./llm";
+import { generateWithDynamicModel, streamWithDynamicModel } from "./llm";
 import {
   createDefaultToolExecutorRegistry,
   dispatchToolExecution,
@@ -71,22 +71,36 @@ function buildFallbackLLMResponse(question: string): string {
   return `我将按企业级日程 agent 的方式处理你的请求：\n- 先识别时间、参会人和副作用动作\n- 再判断是查询、规划还是执行型任务\n- 当前问题：${question}\n建议先补充“时间范围、参与人、目标结果”这三个关键信息，我可以继续生成更精确的安排方案。`;
 }
 
+function splitIntoChunks(content: string): string[] {
+  const chunks = content.match(/.{1,12}|\n/g) ?? [];
+  return chunks.length > 0 ? chunks : [content];
+}
+
 async function handleLLMRoute(
-  decision: RouteDecision,
   messages: ChatItem[],
   settings: ModelSettings,
+  onChunk?: (chunk: string) => void,
 ): Promise<string> {
-  const llmResult = await generateWithDynamicModel(settings, toHistory(messages));
+  const llmResult = await streamWithDynamicModel({
+    settings,
+    messages: toHistory(messages),
+    onChunk,
+  });
   if (llmResult) {
     return llmResult;
   }
 
-  return buildFallbackLLMResponse(messages[messages.length - 1]?.content ?? "");
+  const fallback = buildFallbackLLMResponse(messages[messages.length - 1]?.content ?? "");
+  for (const chunk of splitIntoChunks(fallback)) {
+    onChunk?.(chunk);
+  }
+  return fallback;
 }
 
 export async function runScheduleAgent(
   messages: ChatItem[],
   settings: ModelSettings,
+  onChunk?: (chunk: string) => void,
 ): Promise<{ content: string; decision: RouteDecision; latencyMs: number }> {
   const startedAt = performance.now();
   const latest = messages[messages.length - 1];
@@ -109,6 +123,9 @@ export async function runScheduleAgent(
     content =
       faqPairs.get(latest.content.trim()) ??
       "已命中直达规则，但当前未找到可返回的固定结果。";
+    for (const chunk of splitIntoChunks(content)) {
+      onChunk?.(chunk);
+    }
   } else if (decision.route === "tool") {
     const result = await dispatchToolExecution({
       decision,
@@ -117,13 +134,22 @@ export async function runScheduleAgent(
       executorRegistry: toolExecutorRegistry,
     });
     content = result.content;
+    for (const chunk of splitIntoChunks(content)) {
+      onChunk?.(chunk);
+    }
   } else if (decision.route === "skill") {
     content = handleSkillRoute(decision);
+    for (const chunk of splitIntoChunks(content)) {
+      onChunk?.(chunk);
+    }
   } else if (decision.route === "block") {
     content =
       "当前请求属于高风险不可逆动作，策略已阻断自动执行。请先进行人工确认。";
+    for (const chunk of splitIntoChunks(content)) {
+      onChunk?.(chunk);
+    }
   } else {
-    content = await handleLLMRoute(decision, messages, settings);
+    content = await handleLLMRoute(messages, settings, onChunk);
   }
 
   const latencyMs = Math.round(performance.now() - startedAt);

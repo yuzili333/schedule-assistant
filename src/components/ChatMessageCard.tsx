@@ -7,6 +7,7 @@ type ChatMessageCardElement = HTMLElement & {
   content: string;
   meta?: ChatItem["meta"];
   createdAt: string;
+  isStreaming?: boolean;
 };
 
 export function ChatMessageCard({ message }: { message: ChatItem }) {
@@ -21,6 +22,7 @@ export function ChatMessageCard({ message }: { message: ChatItem }) {
     ref.current.content = message.content;
     ref.current.meta = message.meta;
     ref.current.createdAt = message.createdAt;
+    ref.current.isStreaming = message.isStreaming;
   }, [message]);
 
   return <chat-message-card ref={ref} />;

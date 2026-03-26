@@ -45,6 +45,11 @@ export default function App() {
     ),
   ]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const messagesRef = useRef(messages);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -55,6 +60,34 @@ export default function App() {
 
   const canSubmit = input.trim().length > 0 && !isSubmitting;
 
+  function appendAssistantChunk(messageId: string, chunk: string): void {
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === messageId
+          ? {
+              ...item,
+              content: `${item.content}${chunk}`,
+              isStreaming: true,
+            }
+          : item,
+      ),
+    );
+  }
+
+  function finalizeAssistantMessage(messageId: string, meta?: ChatItem["meta"]): void {
+    setMessages((current) =>
+      current.map((item) =>
+        item.id === messageId
+          ? {
+              ...item,
+              meta: meta ?? item.meta,
+              isStreaming: false,
+            }
+          : item,
+      ),
+    );
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit) {
@@ -62,40 +95,44 @@ export default function App() {
     }
 
     const userMessage = createMessage("user", input.trim());
-    setMessages((current) => [...current, userMessage]);
+    const assistantMessage = createMessage("assistant", "");
+    setMessages((current) => [
+      ...current,
+      userMessage,
+      {
+        ...assistantMessage,
+        isStreaming: true,
+      },
+    ]);
     setInput("");
     setIsSubmitting(true);
 
     try {
-      const nextMessages = [...messages, userMessage];
-      const result = await runScheduleAgent(nextMessages, settings);
-      setMessages((current) => [
-        ...current,
-        createMessage("assistant", result.content, {
-          route: result.decision.route,
-          target: result.decision.target,
-          confidence: result.decision.confidence,
-          latencyMs: result.latencyMs,
-          requiresConfirm: result.decision.risk.requiresHumanConfirm,
-        }),
-      ]);
+      const nextMessages = [...messagesRef.current, userMessage];
+      const result = await runScheduleAgent(nextMessages, settings, (chunk) => {
+        appendAssistantChunk(assistantMessage.id, chunk);
+      });
+      finalizeAssistantMessage(assistantMessage.id, {
+        route: result.decision.route,
+        target: result.decision.target,
+        confidence: result.decision.confidence,
+        latencyMs: result.latencyMs,
+        requiresConfirm: result.decision.risk.requiresHumanConfirm,
+      });
     } catch (error) {
-      setMessages((current) => [
-        ...current,
-        createMessage(
-          "assistant",
-          error instanceof Error
-            ? error.message
-            : "模型请求失败，请检查接口地址和跨域策略。",
-          {
-            route: "error",
-            confidence: 1,
-            latencyMs: 0,
-            requiresConfirm: false,
-            target: "model_gateway",
-          },
-        ),
-      ]);
+      appendAssistantChunk(
+        assistantMessage.id,
+        error instanceof Error
+          ? error.message
+          : "模型请求失败，请检查接口地址和跨域策略。",
+      );
+      finalizeAssistantMessage(assistantMessage.id, {
+        route: "error",
+        confidence: 1,
+        latencyMs: 0,
+        requiresConfirm: false,
+        target: "model_gateway",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -116,7 +153,7 @@ export default function App() {
             </div>
             <div className="rounded-full border border-[var(--line)] bg-[rgba(255,250,241,0.88)] px-4 py-2 text-sm text-[var(--muted)]">
               {settings.enabled && settings.baseUrl
-                ? `Model Gateway: ${settings.model}`
+                ? `Model Gateway: ${settings.label} · ${settings.model}`
                 : "Model Gateway: mock runtime"}
             </div>
           </div>

@@ -14,9 +14,12 @@ export interface ChatItem {
   content: string;
   createdAt: string;
   meta?: ChatCardMeta;
+  isStreaming?: boolean;
 }
 
 export interface ModelSettings {
+  provider: string;
+  label: string;
   baseUrl: string;
   apiKey: string;
   model: string;

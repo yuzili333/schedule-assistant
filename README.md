@@ -12,7 +12,7 @@
 - Router 对查询、技能、工具、LLM 的打分决策
 - ToolExecutor Registry + Executor Contract 的工具分发与执行
 - 高风险副作用动作的风险识别与人工确认提示
-- 通过 `.env.local` 配置 OpenAI 兼容模型接口地址、模型名、API Key 和系统提示词
+- 通过 `.env.local` 的模型列表 JSON 配置当前可用模型，并用激活 key 切换
 - 通过 `lit` 消息卡片展示路由结果、置信度和延迟
 
 ## 目录结构
@@ -90,9 +90,8 @@
 
 `src/agent/storage.ts` + `src/agent/llm.ts` 通过 `.env.local` 提供模型配置能力：
 
-- `baseUrl`：OpenAI 兼容网关地址
-- `model`：模型名称
-- `apiKey`：接口鉴权
+- `PUBLIC_MODEL_ACTIVE`：当前激活模型 key
+- `PUBLIC_MODEL_REGISTRY_JSON`：模型列表 JSON，包含 provider / label / baseUrl / apiKey / model
 - `systemPrompt`：系统提示词
 - `enabled`：开启或关闭真实模型调用
 
@@ -100,13 +99,12 @@
 
 ```bash
 PUBLIC_MODEL_ENABLED=false
-PUBLIC_MODEL_BASE_URL=
-PUBLIC_MODEL_API_KEY=
-PUBLIC_MODEL_NAME=gpt-4o-mini
+PUBLIC_MODEL_ACTIVE=GPT
+PUBLIC_MODEL_REGISTRY_JSON={"GPT":{"provider":"GPT","label":"GPT","baseUrl":"","apiKey":"","model":"gpt-4o-mini"},"QWEN":{"provider":"QWEN","label":"Qwen/Qwen3-32B","baseUrl":"","apiKey":"","model":"Qwen/Qwen3-32B"}}
 PUBLIC_MODEL_SYSTEM_PROMPT=你是企业日程 AI 助手。优先输出结构化、可执行、低风险的安排建议。
 ```
 
-若未开启或接口不可用，则自动回退到内置 Agent 响应模板。
+若未开启或接口不可用，则自动回退到内置 Agent 响应模板。实际上线切换时，只需要更新本地 `.env.local` 中的激活 key，或直接增删 `PUBLIC_MODEL_REGISTRY_JSON` 里的模型项。
 
 ## 开发启动
 

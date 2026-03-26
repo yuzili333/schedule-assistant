@@ -7,18 +7,21 @@ export class ChatMessageCardElement extends LitElement {
     content: { type: String },
     meta: { attribute: false },
     createdAt: { type: String },
+    isStreaming: { type: Boolean },
   };
 
   declare role: "user" | "assistant" | "system";
   declare content: string;
   declare meta?: ChatCardMeta;
   declare createdAt: string;
+  declare isStreaming: boolean;
 
   constructor() {
     super();
     this.role = "assistant";
     this.content = "";
     this.createdAt = "";
+    this.isStreaming = false;
   }
 
   static styles = css`
@@ -63,6 +66,19 @@ export class ChatMessageCardElement extends LitElement {
       font-size: 14px;
     }
 
+    .cursor {
+      display: inline-block;
+      width: 0.7ch;
+      margin-left: 2px;
+      animation: blink 1s steps(1, end) infinite;
+      color: #a44b1a;
+      font-weight: 700;
+    }
+
+    article.user .cursor {
+      color: #fff6eb;
+    }
+
     .meta {
       display: flex;
       flex-wrap: wrap;
@@ -83,6 +99,18 @@ export class ChatMessageCardElement extends LitElement {
       background: rgba(255, 246, 235, 0.12);
       color: inherit;
     }
+
+    @keyframes blink {
+      0%,
+      49% {
+        opacity: 1;
+      }
+
+      50%,
+      100% {
+        opacity: 0;
+      }
+    }
   `;
 
   render() {
@@ -92,7 +120,9 @@ export class ChatMessageCardElement extends LitElement {
           <span class="role">${this.role}</span>
           <span>${this.createdAt}</span>
         </header>
-        <p class="content">${this.content}</p>
+        <p class="content">
+          ${this.content}${this.isStreaming ? html`<span class="cursor">|</span>` : nothing}
+        </p>
         ${this.meta
           ? html`
               <div class="meta">
