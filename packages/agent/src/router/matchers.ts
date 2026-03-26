@@ -1,4 +1,5 @@
 import {
+  EntityKey,
   NormalizedRequest,
   SkillDefinition,
   SkillMatchResult,
@@ -10,7 +11,7 @@ import {
 import { clamp01, fuzzyAliasScore } from "./utils";
 
 function missingFields(
-  requiredFields: string[],
+  requiredFields: EntityKey[],
   entities: NormalizedRequest["entities"],
 ): string[] {
   return requiredFields.filter((field) => {
@@ -20,7 +21,7 @@ function missingFields(
 }
 
 function entityCompletenessScore(
-  requiredFields: string[],
+  requiredFields: EntityKey[],
   entities: NormalizedRequest["entities"],
 ): number {
   if (requiredFields.length === 0) return 1;
@@ -57,10 +58,10 @@ export function matchSkill(
       skill.supportedIntents,
     );
     const completeness = entityCompletenessScore(
-      skill.requiredEntities,
+      skill.requiredEntities as EntityKey[],
       normalized.entities,
     );
-    const missing = missingFields(skill.requiredEntities, normalized.entities);
+    const missing = missingFields(skill.requiredEntities as EntityKey[], normalized.entities);
 
     const score = clamp01(
       0.5 * aliasScore +
@@ -111,10 +112,10 @@ export function matchTool(
   for (const tool of tools) {
     const aliasScore = toolActionScore(normalized.normalizedText, tool);
     const completeness = entityCompletenessScore(
-      tool.requiredParams,
+      tool.requiredParams as EntityKey[],
       normalized.entities,
     );
-    const missing = missingFields(tool.requiredParams, normalized.entities);
+    const missing = missingFields(tool.requiredParams as EntityKey[], normalized.entities);
 
     const score = clamp01(0.65 * aliasScore + 0.35 * completeness);
 

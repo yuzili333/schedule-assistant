@@ -1,4 +1,4 @@
-import { ModelSettings } from "../types/chat";
+import { ModelSettings } from "../types";
 import { ChatMessage } from "../router";
 
 interface OpenAICompatChoice {

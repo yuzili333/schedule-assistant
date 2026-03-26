@@ -12,12 +12,17 @@ import {
   skillDefinitions,
   toolDefinitions,
 } from "../data/mock";
-import { ChatItem, ModelSettings } from "../types/chat";
-import { generateWithDynamicModel, streamWithDynamicModel } from "./llm";
+import { AgentMessage, ModelSettings } from "../types";
+import { streamWithDynamicModel } from "./llm";
 import {
   createDefaultToolExecutorRegistry,
   dispatchToolExecution,
 } from "./tool-executor";
+import {
+  createDefaultMcpServers,
+  DefaultMcpClient,
+  InMemoryMcpServerRegistry,
+} from "../mcp";
 
 const router = new RequestRouter({
   skillRegistry: new InMemorySkillRegistry(skillDefinitions),
@@ -31,8 +36,10 @@ const router = new RequestRouter({
 });
 const toolRegistry = new InMemoryToolRegistry(toolDefinitions);
 const toolExecutorRegistry = createDefaultToolExecutorRegistry();
+const mcpServerRegistry = new InMemoryMcpServerRegistry(createDefaultMcpServers());
+const mcpClient = new DefaultMcpClient(mcpServerRegistry);
 
-function toHistory(messages: ChatItem[]): ChatMessage[] {
+function toHistory(messages: AgentMessage[]): ChatMessage[] {
   return messages.map((item) => ({
     role: item.role,
     content: item.content,
@@ -77,7 +84,7 @@ function splitIntoChunks(content: string): string[] {
 }
 
 async function handleLLMRoute(
-  messages: ChatItem[],
+  messages: AgentMessage[],
   settings: ModelSettings,
   onChunk?: (chunk: string) => void,
 ): Promise<string> {
@@ -98,7 +105,7 @@ async function handleLLMRoute(
 }
 
 export async function runScheduleAgent(
-  messages: ChatItem[],
+  messages: AgentMessage[],
   settings: ModelSettings,
   onChunk?: (chunk: string) => void,
 ): Promise<{ content: string; decision: RouteDecision; latencyMs: number }> {
@@ -132,6 +139,7 @@ export async function runScheduleAgent(
       messages,
       toolRegistry,
       executorRegistry: toolExecutorRegistry,
+      mcpClient,
     });
     content = result.content;
     for (const chunk of splitIntoChunks(content)) {

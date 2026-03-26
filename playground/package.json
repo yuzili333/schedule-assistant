@@ -1,0 +1,33 @@
+{
+  "name": "playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rsbuild dev",
+    "build": "rsbuild build",
+    "preview": "rsbuild preview",
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint . --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint . --tsconfig ./tsconfig.json --fix"
+  },
+  "dependencies": {
+    "@schedule-assistant/agent": "workspace:*",
+    "lit": "^3.3.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "^1.7.3",
+    "@rsbuild/plugin-react": "^1.4.6",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "jsdom": "^26.1.0",
+    "oxlint": "^1.57.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

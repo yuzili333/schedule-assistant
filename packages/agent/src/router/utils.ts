@@ -54,11 +54,12 @@ export function fuzzyAliasScore(text: string, aliases: string[]): number {
   return clamp01(score);
 }
 
-export function isScoreTooClose(
-  scores: Record<string, number>,
+export function isScoreTooClose<T extends object>(
+  scores: { [K in keyof T]: number },
   delta: number,
 ): boolean {
-  const sorted = Object.values(scores).sort((a, b) => b - a);
+  const sorted = Object.values(scores) as number[];
+  sorted.sort((a, b) => b - a);
   if (sorted.length < 2) return false;
   return sorted[0] - sorted[1] < delta;
 }

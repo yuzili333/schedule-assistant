@@ -6,6 +6,11 @@ import {
   dispatchToolExecution,
   InMemoryToolExecutorRegistry,
 } from "./tool-executor";
+import {
+  createDefaultMcpServers,
+  DefaultMcpClient,
+  InMemoryMcpServerRegistry,
+} from "../mcp";
 
 const router = new RequestRouter({
   skillRegistry: new InMemorySkillRegistry(skillDefinitions),
@@ -13,6 +18,10 @@ const router = new RequestRouter({
 });
 
 describe("ToolExecutor", () => {
+  const mcpClient = new DefaultMcpClient(
+    new InMemoryMcpServerRegistry(createDefaultMcpServers()),
+  );
+
   it("dispatches tool execution through executor registry", async () => {
     const toolRegistry = new InMemoryToolRegistry(toolDefinitions);
     const executorRegistry = createDefaultToolExecutorRegistry();
@@ -30,6 +39,7 @@ describe("ToolExecutor", () => {
       messages: [],
       toolRegistry,
       executorRegistry,
+      mcpClient,
     });
 
     expect(result.status).toBe("completed");
@@ -50,6 +60,7 @@ describe("ToolExecutor", () => {
       messages: [],
       toolRegistry,
       executorRegistry,
+      mcpClient,
     });
 
     expect(result.status).toBe("unsupported");
@@ -72,6 +83,7 @@ describe("ToolExecutor", () => {
       messages: [],
       toolRegistry,
       executorRegistry,
+      mcpClient,
     });
 
     expect(result.status).toBe("blocked");

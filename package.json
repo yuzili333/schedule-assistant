@@ -1,33 +1,13 @@
 {
-  "name": "schedule-assistant-agent",
+  "name": "schedule-assistant-workspace",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
+  "packageManager": "pnpm@10.26.0",
   "scripts": {
-    "dev": "rsbuild dev",
-    "build": "rsbuild build",
-    "preview": "rsbuild preview",
-    "test": "vitest run",
-    "lint": "oxlint . --tsconfig ./tsconfig.json",
-    "lint:fix": "oxlint . --tsconfig ./tsconfig.json --fix"
-  },
-  "dependencies": {
-    "lit": "^3.2.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
-  "devDependencies": {
-    "@rsbuild/core": "^1.0.14",
-    "@rsbuild/plugin-react": "^1.0.4",
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@types/node": "^22.13.14",
-    "@types/react": "^18.3.20",
-    "@types/react-dom": "^18.3.6",
-    "jsdom": "^26.0.0",
-    "oxlint": "^1.57.0",
-    "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.2",
-    "vitest": "^3.0.8"
+    "dev": "pnpm --filter playground dev",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "lint:fix": "pnpm -r --if-present lint:fix"
   }
 }

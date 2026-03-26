@@ -1,3 +1,5 @@
+import type { ModelSettings as AgentModelSettings } from "@schedule-assistant/agent";
+
 export type SenderRole = "user" | "assistant" | "system";
 
 export interface ChatCardMeta {
@@ -17,12 +19,4 @@ export interface ChatItem {
   isStreaming?: boolean;
 }
 
-export interface ModelSettings {
-  provider: string;
-  label: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  enabled: boolean;
-  systemPrompt: string;
-}
+export type ModelSettings = AgentModelSettings;

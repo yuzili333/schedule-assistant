@@ -6,7 +6,13 @@ import {
   ToolRegistry,
 } from "./types";
 
-abstract class ConfigurableRegistryCenter<TDefinition extends { enabled?: boolean; tags?: string[] }> {
+abstract class ConfigurableRegistryCenter<
+  TDefinition extends {
+    enabled?: boolean;
+    tags?: string[];
+    metadata?: Record<string, unknown>;
+  },
+> {
   protected readonly records = new Map<string, RegistryRecord<TDefinition>>();
 
   constructor(definitions: TDefinition[] = []) {

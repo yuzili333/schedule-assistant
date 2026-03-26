@@ -2,7 +2,6 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "allowJs": false,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -12,11 +11,6 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "experimentalDecorators": true,
-    "jsx": "react-jsx",
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
-  },
-  "include": ["src", "rsbuild.config.ts"]
+    "isolatedModules": true
+  }
 }

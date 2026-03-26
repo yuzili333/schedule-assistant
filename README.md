@@ -1,4 +1,4 @@
-# 日程 AI 助手
+# 日程 AI 助手 Monorepo
 
 ## 项目说明
 
@@ -11,6 +11,7 @@
 - 自然语言日程规划、时间优化、会议行动项提取
 - Router 对查询、技能、工具、LLM 的打分决策
 - ToolExecutor Registry + Executor Contract 的工具分发与执行
+- MCP server 的注册、发现、调用、卸载
 - 高风险副作用动作的风险识别与人工确认提示
 - 通过 `.env.local` 的模型列表 JSON 配置当前可用模型，并用激活 key 切换
 - 通过 `lit` 消息卡片展示路由结果、置信度和延迟
@@ -19,49 +20,49 @@
 
 ```text
 .
-├── README.md
 ├── package.json
-├── rsbuild.config.ts
-├── tsconfig.json
-├── vitest.config.ts
-└── src
-    ├── App.tsx
-    ├── agent
-    │   ├── llm.ts
-    │   ├── runtime.ts
-    │   └── storage.ts
-    ├── components
-    │   ├── ChatMessageCard.tsx
-    │   └── chat-message-card.ts
-    ├── data
-    │   └── mock.ts
-    ├── router
-    │   ├── evaluators.ts
-    │   ├── examples.ts
-    │   ├── index.ts
-    │   ├── matchers.ts
-    │   ├── normalizer.ts
-    │   ├── register.ts
-    │   ├── registries.ts
-    │   ├── router.test.ts
-    │   ├── router.ts
-    │   ├── rule-engine.ts
-    │   ├── scorer.ts
-    │   ├── types.ts
-    │   └── utils.ts
-    ├── test
-    │   └── setup.ts
-    ├── types
-    │   └── chat.ts
-    ├── index.css
-    └── main.tsx
+├── pnpm-workspace.yaml
+├── README.md
+├── tsconfig.base.json
+├── playground
+│   ├── .env.local
+│   ├── package.json
+│   ├── postcss.config.cjs
+│   ├── rsbuild.config.ts
+│   ├── tailwind.config.cjs
+│   ├── tsconfig.json
+│   ├── vitest.config.ts
+│   └── src
+│       ├── App.tsx
+│       ├── components
+│       ├── index.css
+│       ├── main.tsx
+│       └── types
+└── packages
+    └── agent
+        ├── package.json
+        ├── tsconfig.json
+        ├── tsconfig.build.json
+        ├── vitest.config.ts
+        └── src
+            ├── agent
+            ├── data
+            ├── index.ts
+            ├── mcp
+            ├── router
+            └── types.ts
 ```
+
+## Workspace 划分
+
+- `playground`：chatbot 应用目录，负责 UI、聊天交互和本地调试
+- `packages/agent`：日程助手 agent 包目录，负责 Router、SkillRuntime、ToolExecutor、MCP 等核心逻辑，后续可单独开发、测试和发布
 
 ## 功能设计
 
 ### 1. Router
 
-`src/router/*` 负责对用户请求做标准化、匹配、风险评估和最终路由。
+`packages/agent/src/router/*` 负责对用户请求做标准化、匹配、风险评估和最终路由。
 
 - `direct`：FAQ 或固定规则直达
 - `tool`：执行型工具，如创建日程、发送摘要、查询天气
@@ -71,7 +72,7 @@
 
 ### 2. Skill Runtime
 
-`src/agent/runtime.ts` 提供最小可运行的 Agent 运行时：
+`packages/agent/src/agent/runtime.ts` 提供最小可运行的 Agent 运行时：
 
 - 复用 Router 做意图判断
 - 对 `tool` 路由交由独立 ToolExecutor 层分发执行
@@ -80,15 +81,33 @@
 
 ### 3. ToolExecutor
 
-`src/agent/tool-executor.ts` 提供正式的 ToolExecutor 抽象：
+`packages/agent/src/agent/tool-executor.ts` 提供正式的 ToolExecutor 抽象：
 
 - `ToolExecutor`：单工具执行 contract
 - `ToolExecutorRegistry`：执行器注册与发现
 - `dispatchToolExecution(...)`：按 Router 决策、policy 和 registry 分发
 - 默认执行器覆盖 Calendar / Mail / Weather / Bulk Reschedule
-### 4. 动态模型接口配置
 
-`src/agent/storage.ts` + `src/agent/llm.ts` 通过 `.env.local` 提供模型配置能力：
+### 4. MCP Client / Server
+
+`packages/agent/src/mcp/*` 提供 MCP 能力：
+
+- `InMemoryMcpServerRegistry`：server 注册中心
+- `DefaultMcpClient`：server 发现与工具调用入口
+- `registerServer(...)`：注册 server
+- `discoverServers(...)`：按 capability / toolName 发现 server
+- `callTool(...)`：调用 MCP server tool
+- `uninstallServer(...)`：卸载 server
+
+默认内置了三个 mock domain servers：
+
+- `calendar`
+- `notification`
+- `weather`
+
+### 5. 动态模型接口配置
+
+`packages/agent/src/agent/storage.ts` + `packages/agent/src/agent/llm.ts` 通过 `playground/.env.local` 提供模型配置能力：
 
 - `PUBLIC_MODEL_ACTIVE`：当前激活模型 key
 - `PUBLIC_MODEL_REGISTRY_JSON`：模型列表 JSON，包含 provider / label / baseUrl / apiKey / model
@@ -104,13 +123,20 @@ PUBLIC_MODEL_REGISTRY_JSON={"GPT":{"provider":"GPT","label":"GPT","baseUrl":"","
 PUBLIC_MODEL_SYSTEM_PROMPT=你是企业日程 AI 助手。优先输出结构化、可执行、低风险的安排建议。
 ```
 
-若未开启或接口不可用，则自动回退到内置 Agent 响应模板。实际上线切换时，只需要更新本地 `.env.local` 中的激活 key，或直接增删 `PUBLIC_MODEL_REGISTRY_JSON` 里的模型项。
+若未开启或接口不可用，则自动回退到内置 Agent 响应模板。实际上线切换时，只需要更新 `playground/.env.local` 中的激活 key，或直接增删 `PUBLIC_MODEL_REGISTRY_JSON` 里的模型项。
 
 ## 开发启动
 
 ```bash
 pnpm install
 pnpm dev
+```
+
+单独开发 agent 包：
+
+```bash
+pnpm --filter @schedule-assistant/agent test
+pnpm --filter @schedule-assistant/agent build
 ```
 
 ## 构建与测试

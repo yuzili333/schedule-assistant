@@ -1,8 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  loadModelSettings,
+  runScheduleAgent,
+  type ModelSettings,
+} from "@schedule-assistant/agent";
 import { ChatMessageCard } from "./components/ChatMessageCard";
-import { loadModelSettings } from "./agent/storage";
-import { ChatItem, ModelSettings } from "./types/chat";
-import { runScheduleAgent } from "./agent/runtime";
+import { ChatItem } from "./types/chat";
 
 const suggestionPrompts = [
   "帮我安排明天下午的客户回访和内部复盘",

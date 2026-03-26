@@ -64,6 +64,8 @@ export interface ExtractedEntities {
   meetingRoom?: string;
 }
 
+export type EntityKey = keyof ExtractedEntities;
+
 export interface NormalizedRequest {
   raw: UserRequest;
   normalizedText: string;

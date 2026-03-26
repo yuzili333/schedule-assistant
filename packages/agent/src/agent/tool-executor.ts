@@ -1,16 +1,17 @@
-import { mockEvents } from "../data/mock";
 import {
   ExtractedEntities,
   InMemoryToolRegistry,
   RouteDecision,
   ToolDefinition,
 } from "../router";
-import { ChatItem } from "../types/chat";
+import { AgentMessage } from "../types";
+import { McpClient } from "../mcp";
 
 export interface ToolExecutionContext {
   decision: RouteDecision;
   tool: ToolDefinition;
-  messages: ChatItem[];
+  messages: AgentMessage[];
+  mcpClient: McpClient;
 }
 
 export interface ToolExecutionResult {
@@ -64,24 +65,25 @@ function joinRecipients(entities: ExtractedEntities): string {
 
 export const getCalendarEventsExecutor: ToolExecutor = {
   toolName: "get_calendar_events",
-  execute() {
-    const content = mockEvents
-      .map((event) => {
-        const attendees = event.attendees.join("、");
-        return `- ${event.start}-${event.end} ${event.title}，地点 ${event.location}，参会人 ${attendees}`;
-      })
-      .join("\n");
+  async execute({ mcpClient }) {
+    const result = await mcpClient.callTool({
+      serverId: "calendar",
+      toolName: "list_events",
+    });
 
     return {
-      content: `今天已识别到以下日程：\n${content}`,
+      content: `今天已识别到以下日程：\n${result.content}`,
       status: "completed",
+      metadata: {
+        source: "mcp:calendar/list_events",
+      },
     };
   },
 };
 
 export const createCalendarEventExecutor: ToolExecutor = {
   toolName: "create_calendar_event",
-  execute({ decision }) {
+  async execute({ decision, mcpClient }) {
     if (decision.missingParams.length > 0) {
       return {
         content: `可以创建日程，但还缺少参数：${decision.missingParams.join("、")}。请补充具体时间或参会人。`,
@@ -89,29 +91,46 @@ export const createCalendarEventExecutor: ToolExecutor = {
       };
     }
 
-    return {
-      content: `已生成会议草案：\n- 标题：项目同步会\n- 时间：${String(
-        decision.extractedParams.timeText ?? "待确认",
-      )}\n- 参会人：${joinRecipients(decision.extractedParams)}\n- 地点：${String(
-        decision.extractedParams.meetingRoom ??
+    const result = await mcpClient.callTool({
+      serverId: "calendar",
+      toolName: "create_event_draft",
+      args: {
+        timeText: decision.extractedParams.timeText,
+        recipients: joinRecipients(decision.extractedParams),
+        location:
+          decision.extractedParams.meetingRoom ??
           decision.extractedParams.location ??
           "待补充",
-      )}\n- 状态：待人工确认后写入日历`,
+      },
+    });
+
+    return {
+      content: result.content,
       status: "preview",
+      metadata: {
+        source: "mcp:calendar/create_event_draft",
+      },
     };
   },
 };
 
 export const sendScheduleDigestExecutor: ToolExecutor = {
   toolName: "send_schedule_digest",
-  execute({ decision }) {
+  async execute({ decision, mcpClient }) {
+    const result = await mcpClient.callTool({
+      serverId: "notification",
+      toolName: "preview_schedule_digest",
+      args: {
+        recipients: joinRecipients(decision.extractedParams),
+      },
+    });
+
     return {
-      content: `这是外部副作用动作，当前策略要求人工确认。\n建议先预览摘要，再确认收件人 ${joinRecipients(
-        decision.extractedParams,
-      )}。`,
+      content: result.content,
       status: "preview",
       metadata: {
         policyDecision: decision.risk.policyDecision,
+        source: "mcp:notification/preview_schedule_digest",
       },
     };
   },
@@ -119,18 +138,28 @@ export const sendScheduleDigestExecutor: ToolExecutor = {
 
 export const bulkRescheduleExecutor: ToolExecutor = {
   toolName: "bulk_reschedule_events",
-  execute({ decision }) {
+  async execute({ decision, mcpClient }) {
     const count =
       decision.extractedParams.numericParams.find((entity) => entity.unit === "个")
         ?.value ??
       decision.extractedParams.numericParams[0]?.value ??
       "多";
 
+    const result = await mcpClient.callTool({
+      serverId: "calendar",
+      toolName: "bulk_reschedule_preview",
+      args: {
+        dateRange: decision.extractedParams.dateRange?.raw ?? "待确认",
+        count,
+      },
+    });
+
     return {
-      content: `检测到批量改期请求，范围 ${decision.extractedParams.dateRange?.raw ?? "待确认"}，预计影响 ${count} 个日程。该操作需要审批后才能执行。`,
+      content: result.content,
       status: "blocked",
       metadata: {
         policyDecision: decision.risk.policyDecision,
+        source: "mcp:calendar/bulk_reschedule_preview",
       },
     };
   },
@@ -138,14 +167,26 @@ export const bulkRescheduleExecutor: ToolExecutor = {
 
 export const weatherExecutor: ToolExecutor = {
   toolName: "get_weather",
-  execute({ decision }) {
+  async execute({ decision, mcpClient }) {
     const location =
       decision.extractedParams.location ??
       decision.extractedParams.meetingRoom ??
       "默认办公区";
+
+    const result = await mcpClient.callTool({
+      serverId: "weather",
+      toolName: "get_weather_brief",
+      args: {
+        location,
+      },
+    });
+
     return {
-      content: `${location} 明天下午有小雨，适合线上会议；若需要外出，建议预留 20 分钟机动时间。`,
+      content: result.content,
       status: "completed",
+      metadata: {
+        source: "mcp:weather/get_weather_brief",
+      },
     };
   },
 };
@@ -162,11 +203,12 @@ export function createDefaultToolExecutorRegistry(): InMemoryToolExecutorRegistr
 
 export async function dispatchToolExecution(params: {
   decision: RouteDecision;
-  messages: ChatItem[];
+  messages: AgentMessage[];
   toolRegistry: InMemoryToolRegistry;
   executorRegistry: ToolExecutorRegistry;
+  mcpClient: McpClient;
 }): Promise<ToolExecutionResult> {
-  const { decision, messages, toolRegistry, executorRegistry } = params;
+  const { decision, messages, toolRegistry, executorRegistry, mcpClient } = params;
   const toolName = decision.target;
 
   if (!toolName) {
@@ -207,5 +249,6 @@ export async function dispatchToolExecution(params: {
     decision,
     tool,
     messages,
+    mcpClient,
   });
 }
