@@ -2,14 +2,17 @@
 
 ## 项目说明
 
-本仓库实现了一个面向企业场景的日程 AI 助手 Agent。应用端采用 `rsbuild + React + tailwindcss`，消息卡片使用 `lit` 自定义元素渲染，当前版本围绕“日程创建”和“日程查询”两个 tool 落地：
+本仓库实现了一个面向企业场景的日程 AI 助手 Agent。应用端采用 `rsbuild + React + tailwindcss`，消息卡片使用 `lit` 自定义元素渲染，当前版本围绕“日程创建”和“日程查询”两个 tool 落地，并补充了一个仅服务于新增日程的推荐填充 skill：
 
-`Router + ToolExecutor + MCP Client + Domain MCP Servers + Policy/State/Cost Control`
+`Router + Skill Runtime + ToolExecutor + MCP Client + Domain MCP Servers + Policy/State/Cost Control`
 
 当前版本提供一个可直接运行的 Web Chatbox 原型，支持：
 
 - 日程创建和日程查询
+- 新增日程时优先读取用户最近一条待办消息，推荐主题、开始日期、结束日期
+- 待办消息缺失会议室、视频会议号、参会人、抄送人时，回退读取最近创建的日程字段做推荐填充
 - 创建日程时根据参会人姓名调用机构人员服务查询候选人，并在 Chatbox 中以 `lit` 卡片供用户手动选择
+- 抄送人名单也会走同样的机构人员候选确认链路
 - Router 对规则直达、工具、LLM 的打分决策
 - ToolExecutor Registry + Executor Contract 的工具分发与执行
 - MCP server 的注册、发现、调用、卸载
@@ -67,10 +70,20 @@
 
 - `direct`：FAQ 或固定规则直达
 - `tool`：执行型工具，仅保留 `create_calendar_event` 和 `get_calendar_events`
+- `skill`：新增日程预填充，仅保留 `recommend_create_calendar_prefill`
 - `llm`：低置信度或开放式复杂问题回退到大模型
 - `block`：高风险写入操作拦截
 
-### 2. ToolExecutor
+### 2. Skill Runtime
+
+`packages/agent/src/agent/skill-runtime.ts` 负责新增日程推荐填充：
+
+- 读取近期待办消息，优先推荐最新一条待办作为日程主题来源
+- 从待办消息中解析时间、参会人、抄送人
+- 缺失字段时回退读取最近创建的日程，推荐会议室、视频会议号等字段
+- 预先查询机构人员候选，供 Chatbox 中的 `lit` 卡片逐步确认
+
+### 3. ToolExecutor
 
 `packages/agent/src/agent/tool-executor.ts` 提供正式的 ToolExecutor 抽象：
 
@@ -92,16 +105,19 @@
 - `callTool(...)`：调用 MCP server tool
 - `uninstallServer(...)`：卸载 server
 
-默认内置了两个 mock domain servers：
+默认内置了三个 mock domain servers：
 
 - `calendar`
 - `organization`
+- `todo`
 
 其中：
 
 - `calendar/list_events`：查询日程数据
 - `calendar/create_event_draft`：生成待确认的日程创建草稿
+- `calendar/list_recent_created_events`：读取最近创建的日程记录
 - `organization/search_people`：按姓名查询机构人员候选数据
+- `todo/list_recent_todo_messages`：读取用户近期待办消息
 
 ### 5. 动态模型接口配置
 
@@ -118,7 +134,7 @@
 PUBLIC_MODEL_ENABLED=false
 PUBLIC_MODEL_ACTIVE=GPT
 PUBLIC_MODEL_REGISTRY_JSON={"GPT":{"provider":"GPT","label":"GPT","baseUrl":"","apiKey":"","model":"gpt-4o-mini"},"QWEN":{"provider":"QWEN","label":"Qwen/Qwen3-32B","baseUrl":"","apiKey":"","model":"Qwen/Qwen3-32B"}}
-PUBLIC_MODEL_SYSTEM_PROMPT=你是企业日程 AI 助手。仅处理日程创建与日程查询，创建日程时必须校验主题、开始日期、结束日期。
+PUBLIC_MODEL_SYSTEM_PROMPT=你是企业日程 AI 助手。仅处理日程创建与日程查询。新增日程时优先基于最近待办消息推荐主题和时间，并校验主题、开始日期、结束日期是否齐全。
 ```
 
 若未开启或接口不可用，则自动回退到内置 Agent 响应模板。实际上线切换时，只需要更新 `playground/.env.local` 中的激活 key，或直接增删 `PUBLIC_MODEL_REGISTRY_JSON` 里的模型项。

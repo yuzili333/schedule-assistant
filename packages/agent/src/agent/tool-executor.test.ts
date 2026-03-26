@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryToolRegistry, RequestRouter } from "../router";
-import { toolDefinitions } from "../data/mock";
+import { InMemorySkillRegistry, InMemoryToolRegistry, RequestRouter } from "../router";
+import { skillDefinitions, toolDefinitions } from "../data/mock";
 import {
   createDefaultToolExecutorRegistry,
   dispatchToolExecution,
@@ -13,6 +13,7 @@ import {
 } from "../mcp";
 
 const router = new RequestRouter({
+  skillRegistry: new InMemorySkillRegistry(skillDefinitions),
   toolRegistry: new InMemoryToolRegistry(toolDefinitions),
 });
 
@@ -51,6 +52,22 @@ describe("ToolExecutor", () => {
 
     expect(result.status).toBe("preview");
     expect(result.metadata?.personCandidates).toHaveLength(2);
+  });
+
+  it("returns cc candidates before creating event when cc name is ambiguous", async () => {
+    const result = await dispatchToolExecution({
+      decision: router.route({
+        id: "tool-2-cc",
+        text: "创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n抄送人：张三",
+      }),
+      messages: [],
+      toolRegistry: new InMemoryToolRegistry(toolDefinitions),
+      executorRegistry: createDefaultToolExecutorRegistry(),
+      mcpClient,
+    });
+
+    expect(result.status).toBe("preview");
+    expect(result.metadata?.personCandidates?.every((item) => item.role === "cc")).toBe(true);
   });
 
   it("returns unsupported when executor is missing", async () => {

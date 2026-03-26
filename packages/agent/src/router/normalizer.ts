@@ -7,8 +7,8 @@ import {
 } from "./types";
 import { includesAny, tokenize, uniq } from "./utils";
 
-const ACTION_VERBS = ["创建", "新建", "安排", "create"];
-const SIDE_EFFECT_VERBS = ["创建", "新建", "create"];
+const ACTION_VERBS = ["创建", "新建", "新增", "安排", "create"];
+const SIDE_EFFECT_VERBS = ["创建", "新建", "新增", "create"];
 const QUESTION_HINTS = ["吗", "哪些", "查询", "查看", "?", "what"];
 const TIME_HINTS = ["今天", "明天", "后天", "本周", "下周", "上午", "下午"];
 const PRIORITY_KEYWORDS = ["p0", "p1", "p2", "紧急"];
@@ -83,10 +83,16 @@ function extractNumericParams(text: string): NumericEntity[] {
     .filter((item) => !Number.isNaN(item.value));
 }
 
+function splitNames(raw?: string): string[] {
+  return (raw?.split(/[、,，;；]/) ?? [])
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function extractPersonNames(text: string): string[] {
   const labeled = extractFieldValue(text, ["参会人", "邀请人"]);
   if (labeled) {
-    return labeled.split(/[、,，;；]/).map((item) => item.trim()).filter(Boolean);
+    return splitNames(labeled);
   }
 
   const matches =
@@ -99,6 +105,10 @@ function extractPersonNames(text: string): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+function extractCcNames(text: string): string[] {
+  return splitNames(extractFieldValue(text, ["抄送人", "抄送", "CC", "cc"]));
 }
 
 function extractMeetingRoom(text: string): string | undefined {
@@ -118,8 +128,12 @@ function detectIntents(text: string): string[] {
     intents.push("query");
   }
 
-  if (includesAny(text, ["创建", "新建", "安排", "create"])) {
+  if (includesAny(text, ["创建", "新建", "新增", "安排", "create"])) {
     intents.push("action");
+  }
+
+  if (includesAny(text, ["新增日程", "推荐", "待办"])) {
+    intents.push("workflow");
   }
 
   if (intents.length === 0) {
@@ -141,6 +155,7 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
   const priority = extractPriority(req.text);
   const meetingRoom = extractMeetingRoom(req.text);
   const personNames = extractPersonNames(req.text);
+  const ccPersonNames = extractCcNames(req.text);
   const selectedPersonIds = (
     extractFieldValue(req.text, ["参会人ID"])?.split(/[、,，;；\s]+/) ?? []
   ).filter(Boolean);
@@ -149,12 +164,17 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
   )
     .map((item) => item.trim())
     .filter(Boolean);
+  const selectedCcIds = (
+    extractFieldValue(req.text, ["抄送人ID", "CC ID"])?.split(/[、,，;；\s]+/) ?? []
+  ).filter(Boolean);
+  const selectedCcNames = splitNames(extractFieldValue(req.text, ["已选抄送人", "已选CC"]));
   const eventTitle =
     extractFieldValue(req.text, ["主题", "标题"]) ??
     req.text.match(/创建(?:一个)?(?:日程|会议)([^，。]*)/)?.[1]?.trim();
   const startDate = extractFieldValue(req.text, ["开始日期", "开始时间", "开始"]);
   const endDate = extractFieldValue(req.text, ["结束日期", "结束时间", "结束"]);
   const allDayRaw = extractFieldValue(req.text, ["是否全天"]);
+  const videoMeetingCode = extractFieldValue(req.text, ["视频会议号", "会议号"]);
   const description = extractFieldValue(req.text, ["描述", "说明"]);
   const attachments = (
     extractFieldValue(req.text, ["附件"])?.split(/[、,，;；]/) ?? []
@@ -188,8 +208,11 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
       emails,
       timeText,
       personNames,
+      ccPersonNames,
       selectedPersonIds,
       selectedPersonNames,
+      selectedCcIds,
+      selectedCcNames,
       numericParams,
       dateRange,
       priority,
@@ -199,6 +222,7 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
       startDate,
       endDate,
       allDay,
+      videoMeetingCode,
       description,
       attachments,
       reminderChannels,
@@ -216,7 +240,11 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
       hasPriority: includesAny(normalizedText, PRIORITY_KEYWORDS) || !!priority,
       hasLocation: !!meetingRoom,
       hasMeetingRoom: !!meetingRoom,
-      hasPeople: personNames.length > 0 || selectedPersonNames.length > 0,
+      hasPeople:
+        personNames.length > 0 ||
+        ccPersonNames.length > 0 ||
+        selectedPersonNames.length > 0 ||
+        selectedCcNames.length > 0,
       hasNumericParams: numericParams.length > 0,
     },
   };

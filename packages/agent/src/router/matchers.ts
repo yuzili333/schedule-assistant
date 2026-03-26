@@ -1,8 +1,11 @@
 import {
   EntityKey,
   NormalizedRequest,
+  SkillDefinition,
+  SkillMatchResult,
   ToolDefinition,
   ToolMatchResult,
+  SkillRegistry,
   ToolRegistry,
 } from "./types";
 import { clamp01, fuzzyAliasScore } from "./utils";
@@ -24,6 +27,47 @@ function entityCompletenessScore(
   if (requiredFields.length === 0) return 1;
   const missing = missingFields(requiredFields, entities);
   return clamp01((requiredFields.length - missing.length) / requiredFields.length);
+}
+
+function intentOverlapScore(requestIntents: string[], supportedIntents: string[]): number {
+  if (supportedIntents.length === 0) return 0;
+  const overlap = requestIntents.filter((intent) => supportedIntents.includes(intent)).length;
+  return clamp01(overlap / supportedIntents.length);
+}
+
+export function matchSkill(
+  normalized: NormalizedRequest,
+  registry: SkillRegistry,
+): SkillMatchResult {
+  const skills = registry.list();
+  let bestSkill: SkillDefinition | undefined;
+  let bestScore = 0;
+  let bestReasonCodes: string[] = [];
+
+  for (const skill of skills) {
+    const aliasScore = fuzzyAliasScore(normalized.normalizedText, [
+      skill.name,
+      ...skill.aliases,
+      skill.description,
+    ]);
+    const intentScore = intentOverlapScore(normalized.intents, skill.supportedIntents);
+    const score = clamp01(0.65 * aliasScore + 0.35 * intentScore);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestSkill = skill;
+      bestReasonCodes = [
+        aliasScore > 0.7 ? "SKILL_ALIAS_MATCH" : "SKILL_PARTIAL_ALIAS_MATCH",
+        intentScore > 0 ? "SKILL_INTENT_MATCH" : "SKILL_INTENT_WEAK",
+      ];
+    }
+  }
+
+  return {
+    score: bestScore,
+    matchedSkill: bestSkill,
+    reasonCodes: bestReasonCodes,
+  };
 }
 
 function toolActionScore(text: string, tool: ToolDefinition): number {

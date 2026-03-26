@@ -1,16 +1,18 @@
 import {
   ChatMessage,
+  InMemorySkillRegistry,
   InMemoryToolRegistry,
   RequestRouter,
   RouteDecision,
 } from "../router";
-import { faqPairs, toolDefinitions } from "../data/mock";
+import { faqPairs, skillDefinitions, toolDefinitions } from "../data/mock";
 import { AgentMessage, AgentResultMetadata, ModelSettings } from "../types";
 import { streamWithDynamicModel } from "./llm";
 import {
   createDefaultToolExecutorRegistry,
   dispatchToolExecution,
 } from "./tool-executor";
+import { runScheduleSkill } from "./skill-runtime";
 import {
   createDefaultMcpServers,
   DefaultMcpClient,
@@ -18,9 +20,11 @@ import {
 } from "../mcp";
 
 const router = new RequestRouter({
+  skillRegistry: new InMemorySkillRegistry(skillDefinitions),
   toolRegistry: new InMemoryToolRegistry(toolDefinitions),
   options: {
     directThreshold: 0.78,
+    skillThreshold: 0.7,
     toolThreshold: 0.7,
     llmThreshold: 0.52,
   },
@@ -101,6 +105,17 @@ export async function runScheduleAgent(
       messages,
       toolRegistry,
       executorRegistry: toolExecutorRegistry,
+      mcpClient,
+    });
+    content = result.content;
+    resultMetadata = result.metadata;
+    for (const chunk of splitIntoChunks(content)) {
+      onChunk?.(chunk);
+    }
+  } else if (decision.route === "skill") {
+    const result = await runScheduleSkill({
+      skillId: decision.target ?? "",
+      messages,
       mcpClient,
     });
     content = result.content;

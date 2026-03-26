@@ -13,9 +13,15 @@ type ChatMessageCardElement = HTMLElement & {
 export function ChatMessageCard({
   message,
   onSelectCandidate,
+  onApplyDraft,
 }: {
   message: ChatItem;
-  onSelectCandidate?: (candidateId: string) => void;
+  onSelectCandidate?: (detail: {
+    candidateId: string;
+    role: "attendee" | "cc";
+    sourceName: string;
+  }) => void;
+  onApplyDraft?: () => void;
 }) {
   const ref = useRef<ChatMessageCardElement | null>(null);
 
@@ -38,8 +44,12 @@ export function ChatMessageCard({
     }
 
     const handler = (event: Event) => {
-      const customEvent = event as CustomEvent<{ candidateId: string }>;
-      onSelectCandidate(customEvent.detail.candidateId);
+      const customEvent = event as CustomEvent<{
+        candidateId: string;
+        role: "attendee" | "cc";
+        sourceName: string;
+      }>;
+      onSelectCandidate(customEvent.detail);
     };
 
     element.addEventListener("person-select", handler as EventListener);
@@ -48,6 +58,23 @@ export function ChatMessageCard({
       element.removeEventListener("person-select", handler as EventListener);
     };
   }, [onSelectCandidate]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !onApplyDraft) {
+      return;
+    }
+
+    const handler = () => {
+      onApplyDraft();
+    };
+
+    element.addEventListener("draft-apply", handler as EventListener);
+
+    return () => {
+      element.removeEventListener("draft-apply", handler as EventListener);
+    };
+  }, [onApplyDraft]);
 
   return <chat-message-card ref={ref} />;
 }

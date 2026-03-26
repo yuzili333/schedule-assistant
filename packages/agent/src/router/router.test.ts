@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { RequestRouter } from "./router";
-import { InMemoryToolRegistry } from "./registries";
-import { toolDefinitions } from "../data/mock";
+import { InMemorySkillRegistry, InMemoryToolRegistry } from "./registries";
+import { skillDefinitions, toolDefinitions } from "../data/mock";
 import { normalizeRequest } from "./normalizer";
 
 describe("RequestRouter", () => {
   const router = new RequestRouter({
+    skillRegistry: new InMemorySkillRegistry(skillDefinitions),
     toolRegistry: new InMemoryToolRegistry(toolDefinitions),
   });
 
@@ -29,19 +30,33 @@ describe("RequestRouter", () => {
     expect(decision.target).toBe("get_calendar_events");
   });
 
+  it("routes incomplete add-calendar requests to prefill skill", () => {
+    const decision = router.route({
+      id: "r-prefill",
+      text: "请帮我新增日程，先按最近待办推荐一下",
+    });
+
+    expect(decision.route).toBe("skill");
+    expect(decision.target).toBe("recommend_create_calendar_prefill");
+  });
+
   it("extracts event creation fields and selected attendee ids", () => {
     const normalized = normalizeRequest({
       id: "r3",
-      text: "创建日程\n主题：版本复盘\n开始日期：2026-03-27 10:00\n结束日期：2026-03-27 11:30\n会议室：6F Maple\n提醒渠道：app、sms\n已选参会人：张三\n参会人ID：EMP-1001",
+      text: "创建日程\n主题：版本复盘\n开始日期：2026-03-27 10:00\n结束日期：2026-03-27 11:30\n会议室：6F Maple\n视频会议号：889-100\n提醒渠道：app、sms\n已选参会人：张三\n参会人ID：EMP-1001\n抄送人：王五\n已选抄送人：王五\n抄送人ID：EMP-1004",
     });
 
     expect(normalized.entities.eventTitle).toBe("版本复盘");
     expect(normalized.entities.startDate).toBe("2026-03-27 10:00");
     expect(normalized.entities.endDate).toBe("2026-03-27 11:30");
     expect(normalized.entities.meetingRoom).toBe("6F Maple");
+    expect(normalized.entities.videoMeetingCode).toBe("889-100");
     expect(normalized.entities.reminderChannels).toEqual(["app", "sms"]);
     expect(normalized.entities.selectedPersonNames).toEqual(["张三"]);
     expect(normalized.entities.selectedPersonIds).toEqual(["EMP-1001"]);
+    expect(normalized.entities.ccPersonNames).toEqual(["王五"]);
+    expect(normalized.entities.selectedCcNames).toEqual(["王五"]);
+    expect(normalized.entities.selectedCcIds).toEqual(["EMP-1004"]);
   });
 
   it("supports registry enable and tag lookup", () => {

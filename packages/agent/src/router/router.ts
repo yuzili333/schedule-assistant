@@ -7,13 +7,14 @@ import {
 } from "./types";
 import { normalizeRequest } from "./normalizer";
 import { runDirectRules } from "./rule-engine";
-import { matchTool } from "./matchers";
+import { matchSkill, matchTool } from "./matchers";
 import { assessComplexity, assessCost, assessRisk } from "./evaluators";
 import { buildScores } from "./scorer";
 import { isScoreTooClose } from "./utils";
 
 const DEFAULT_OPTIONS: RouterOptions = {
   directThreshold: 0.8,
+  skillThreshold: 0.72,
   toolThreshold: 0.72,
   llmThreshold: 0.5,
   scoreCloseDelta: 0.08,
@@ -39,11 +40,21 @@ export class RequestRouter {
       ? String(directRule.payload?.toolName ?? directRule.target.replace("tool:", ""))
       : undefined;
 
+    const skillMatch = matchSkill(normalized, this.deps.skillRegistry);
     const toolMatch = matchTool(normalized, this.deps.toolRegistry);
 
-    const complexity = assessComplexity(normalized, toolMatch);
+    const complexity = assessComplexity(normalized, skillMatch, toolMatch);
     const risk = assessRisk(normalized, toolMatch, context);
     const cost = assessCost(normalized, complexity, toolMatch);
+    const prefersCreatePrefillSkill =
+      normalized.intents.includes("action") &&
+      skillMatch.matchedSkill?.skillId === "recommend_create_calendar_prefill" &&
+      (
+        toolMatch.missingParams.length > 0 ||
+        normalized.normalizedText.includes("新增日程") ||
+        normalized.normalizedText.includes("推荐") ||
+        normalized.normalizedText.includes("待办")
+      );
 
     if (directRule.hit && directToolTarget) {
       return {
@@ -52,6 +63,7 @@ export class RequestRouter {
         confidence: Number(Math.max(directRule.confidence, 0.95).toFixed(3)),
         scores: {
           direct: directRule.confidence,
+          skill: prefersCreatePrefillSkill ? skillMatch.score : 0.1,
           tool: Math.max(toolMatch.score, 0.9),
           llm: 0.05,
         },
@@ -84,6 +96,7 @@ export class RequestRouter {
         confidence: 0.98,
         scores: {
           direct: 0,
+          skill: 0,
           tool: 0,
           llm: 0.2,
         },
@@ -103,6 +116,7 @@ export class RequestRouter {
     const scores = buildScores({
       normalized,
       directRule,
+      skillMatch,
       toolMatch,
       complexity,
       risk,
@@ -133,6 +147,21 @@ export class RequestRouter {
       confidence = Math.max(confidence, directRule.confidence);
     }
 
+    if (prefersCreatePrefillSkill) {
+      route = "skill";
+      target = skillMatch.matchedSkill?.skillId;
+      confidence = Math.max(scores.skill, 0.82);
+    }
+
+    if (route === "skill") {
+      target = skillMatch.matchedSkill?.skillId;
+      missingParams = toolMatch.missingParams;
+      if (!target || confidence < this.options.skillThreshold) {
+        route = "llm";
+        confidence = Math.max(scores.llm, 0.62);
+      }
+    }
+
     if (route === "tool") {
       target = target ?? toolMatch.matchedTool?.toolName;
       missingParams = toolMatch.missingParams;
@@ -158,6 +187,7 @@ export class RequestRouter {
 
     const reasonCodes = [
       ...(directRule.hit ? directRule.reasonCodes : []),
+      ...skillMatch.reasonCodes,
       ...toolMatch.reasonCodes,
       ...complexity.reasonCodes,
       ...risk.reasonCodes,

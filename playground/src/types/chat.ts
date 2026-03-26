@@ -1,7 +1,8 @@
 import type {
   CreateCalendarDraft,
   ModelSettings as AgentModelSettings,
-  PersonCandidate,
+  PersonLookupCandidate,
+  ScheduleRecommendation,
 } from "@schedule-assistant/agent";
 
 export type SenderRole = "user" | "assistant" | "system";
@@ -12,8 +13,9 @@ export interface ChatCardMeta {
   confidence: number;
   latencyMs: number;
   requiresConfirm: boolean;
-  personCandidates?: PersonCandidate[];
+  personCandidates?: PersonLookupCandidate[];
   draft?: CreateCalendarDraft;
+  recommendation?: ScheduleRecommendation;
 }
 
 export interface ChatItem {

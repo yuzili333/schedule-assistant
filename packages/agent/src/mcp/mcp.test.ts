@@ -43,4 +43,20 @@ describe("MCP server registry and client", () => {
     expect(Array.isArray(result.data)).toBe(true);
     expect((result.data as unknown[])).toHaveLength(2);
   });
+
+  it("supports todo message discovery", async () => {
+    const client = new DefaultMcpClient(
+      new InMemoryMcpServerRegistry(createDefaultMcpServers()),
+    );
+
+    expect(client.discoverServers({ capability: "todo.read" })).toHaveLength(1);
+
+    const result = await client.callTool({
+      serverId: "todo",
+      toolName: "list_recent_todo_messages",
+    });
+
+    expect(Array.isArray(result.data)).toBe(true);
+    expect((result.data as unknown[])).toHaveLength(2);
+  });
 });

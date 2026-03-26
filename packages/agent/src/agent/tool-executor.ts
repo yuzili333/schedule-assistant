@@ -2,7 +2,7 @@ import {
   AgentMessage,
   AgentResultMetadata,
   CreateCalendarDraft,
-  PersonCandidate,
+  PersonLookupCandidate,
 } from "../types";
 import {
   ExtractedEntities,
@@ -71,6 +71,16 @@ function joinRecipients(entities: ExtractedEntities): string {
   return "未选择";
 }
 
+function joinCcRecipients(entities: ExtractedEntities): string {
+  if (entities.selectedCcNames.length > 0) {
+    return entities.selectedCcNames.join("、");
+  }
+  if (entities.ccPersonNames.length > 0) {
+    return entities.ccPersonNames.join("、");
+  }
+  return "未选择";
+}
+
 function buildDraft(entities: ExtractedEntities): CreateCalendarDraft {
   return {
     title: entities.eventTitle ?? "",
@@ -78,14 +88,46 @@ function buildDraft(entities: ExtractedEntities): CreateCalendarDraft {
     endDate: entities.endDate ?? "",
     allDay: entities.allDay,
     meetingRoom: entities.meetingRoom,
+    videoMeetingCode: entities.videoMeetingCode,
     description: entities.description,
     attachments: entities.attachments,
     reminderChannels: entities.reminderChannels,
     urgent: entities.urgent,
-    attendeeNameQuery: entities.personNames[0],
+    attendeeNameQueries: entities.personNames,
+    ccNameQueries: entities.ccPersonNames,
     selectedAttendeeIds: entities.selectedPersonIds,
     selectedAttendeeNames: entities.selectedPersonNames,
+    selectedCcIds: entities.selectedCcIds,
+    selectedCcNames: entities.selectedCcNames,
   };
+}
+
+async function searchPeopleCandidates(
+  mcpClient: McpClient,
+  role: "attendee" | "cc",
+  names: string[],
+): Promise<PersonLookupCandidate[]> {
+  const resolved = await Promise.all(
+    names.map(async (name) => {
+      const peopleResult = await mcpClient.callTool({
+        serverId: "organization",
+        toolName: "search_people",
+        args: {
+          keyword: name,
+        },
+      });
+      const candidates = Array.isArray(peopleResult.data)
+        ? peopleResult.data
+        : [];
+      return candidates.map((candidate) => ({
+        ...(candidate as Omit<PersonLookupCandidate, "role" | "sourceName">),
+        role,
+        sourceName: name,
+      }));
+    }),
+  );
+
+  return resolved.flat();
 }
 
 export const getCalendarEventsExecutor: ToolExecutor = {
@@ -128,27 +170,25 @@ export const createCalendarEventExecutor: ToolExecutor = {
       };
     }
 
-    if (
-      decision.extractedParams.personNames.length > 0 &&
-      decision.extractedParams.selectedPersonIds.length === 0
-    ) {
-      const searchName = decision.extractedParams.personNames[0];
-      const peopleResult = await mcpClient.callTool({
-        serverId: "organization",
-        toolName: "search_people",
-        args: {
-          keyword: searchName,
-        },
-      });
-      const candidates = Array.isArray(peopleResult.data)
-        ? (peopleResult.data as PersonCandidate[])
-        : [];
+    const unresolvedAttendeeNames = decision.extractedParams.personNames.filter(
+      (name) => !decision.extractedParams.selectedPersonNames.includes(name),
+    );
+    const unresolvedCcNames = decision.extractedParams.ccPersonNames.filter(
+      (name) => !decision.extractedParams.selectedCcNames.includes(name),
+    );
+
+    if (unresolvedAttendeeNames.length > 0 || unresolvedCcNames.length > 0) {
+      const [attendeeCandidates, ccCandidates] = await Promise.all([
+        searchPeopleCandidates(mcpClient, "attendee", unresolvedAttendeeNames),
+        searchPeopleCandidates(mcpClient, "cc", unresolvedCcNames),
+      ]);
+      const candidates = [...attendeeCandidates, ...ccCandidates];
 
       return {
         content:
           candidates.length > 0
-            ? `已根据参会人姓名“${searchName}”找到候选人员，请在下方卡片中手动选择。`
-            : `未找到参会人“${searchName}”的候选人员，请更换姓名或稍后重试。`,
+            ? "已根据待确认的参会人/抄送人姓名找到候选人员，请继续在下方卡片中确认最终名单。"
+            : "未找到待确认的参会人或抄送人候选人员，请更换姓名或稍后重试。",
         status: "preview",
         metadata: {
           draft,
@@ -166,11 +206,13 @@ export const createCalendarEventExecutor: ToolExecutor = {
         endDate: decision.extractedParams.endDate,
         allDay: decision.extractedParams.allDay ?? false,
         meetingRoom: decision.extractedParams.meetingRoom,
+        videoMeetingCode: decision.extractedParams.videoMeetingCode,
         description: decision.extractedParams.description,
         attachments: decision.extractedParams.attachments.join("、"),
         reminderChannels: decision.extractedParams.reminderChannels.join("、"),
         urgent: decision.extractedParams.urgent ?? false,
         recipients: joinRecipients(decision.extractedParams),
+        ccRecipients: joinCcRecipients(decision.extractedParams),
       },
     });
 

@@ -1,4 +1,4 @@
-import { mockEvents, mockPeople } from "../data/mock";
+import { mockEvents, mockPeople, mockTodoMessages } from "../data/mock";
 import { McpServer } from "./types";
 
 export const calendarMcpServer: McpServer = {
@@ -15,6 +15,10 @@ export const calendarMcpServer: McpServer = {
     {
       name: "create_event_draft",
       description: "创建会议草案",
+    },
+    {
+      name: "list_recent_created_events",
+      description: "读取用户最近创建的日程记录",
     },
   ],
   invoke(toolName, args) {
@@ -46,17 +50,28 @@ export const calendarMcpServer: McpServer = {
           args?.startDate ?? "待确认",
         )}\n- 结束日期：${String(args?.endDate ?? "待确认")}\n- 是否全天：${String(
           args?.allDay ? "是" : "否",
-        )}\n- 会议室：${String(args?.meetingRoom ?? "未填写")}\n- 描述：${String(
-          args?.description ?? "未填写",
-        )}\n- 附件：${String(args?.attachments ?? "未填写")}\n- 提醒渠道：${String(
+        )}\n- 会议室：${String(args?.meetingRoom ?? "未填写")}\n- 视频会议号：${String(
+          args?.videoMeetingCode ?? "未填写",
+        )}\n- 描述：${String(args?.description ?? "未填写")}\n- 附件：${String(
+          args?.attachments ?? "未填写",
+        )}\n- 提醒渠道：${String(
           args?.reminderChannels ?? "未填写",
         )}\n- 紧急状态：${String(args?.urgent ? "是" : "否")}\n- 参会人：${String(
           args?.recipients ?? "未选择",
+        )}\n- 抄送人：${String(
+          args?.ccRecipients ?? "未选择",
         )}\n- 状态：待人工确认后写入日程服务`,
         data: {
           status: "draft",
           ...args,
         },
+      };
+    }
+
+    if (toolName === "list_recent_created_events") {
+      return {
+        content: `已读取最近 ${mockEvents.length} 条创建日程记录。`,
+        data: mockEvents,
       };
     }
 
@@ -93,6 +108,30 @@ export const organizationMcpServer: McpServer = {
   },
 };
 
+export const todoMcpServer: McpServer = {
+  serverId: "todo",
+  name: "Todo MCP Server",
+  description: "负责近期待办消息查询。",
+  version: "0.1.0",
+  capabilities: ["todo.read"],
+  tools: [
+    {
+      name: "list_recent_todo_messages",
+      description: "读取用户近期待办消息",
+    },
+  ],
+  invoke(toolName) {
+    if (toolName === "list_recent_todo_messages") {
+      return {
+        content: `已读取最近 ${mockTodoMessages.length} 条待办消息。`,
+        data: mockTodoMessages,
+      };
+    }
+
+    throw new Error(`todo server 不支持工具 ${toolName}`);
+  },
+};
+
 export function createDefaultMcpServers(): McpServer[] {
-  return [calendarMcpServer, organizationMcpServer];
+  return [calendarMcpServer, organizationMcpServer, todoMcpServer];
 }

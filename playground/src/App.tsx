@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   type CreateCalendarDraft,
   loadModelSettings,
-  type PersonCandidate,
+  type PersonLookupCandidate,
   runScheduleAgent,
   type ModelSettings,
 } from "@schedule-assistant/agent";
@@ -120,6 +120,7 @@ export default function App() {
         requiresConfirm: result.decision.risk.requiresHumanConfirm,
         personCandidates: result.resultMetadata?.personCandidates,
         draft: result.resultMetadata?.draft,
+        recommendation: result.resultMetadata?.recommendation,
       });
     } catch (error) {
       appendAssistantChunk(
@@ -140,24 +141,40 @@ export default function App() {
     }
   }
 
-  function buildSelectionPrompt(
-    draft: CreateCalendarDraft,
-    candidate: PersonCandidate,
-  ): string {
+  function buildCreatePrompt(draft: CreateCalendarDraft): string {
     const lines = [
       "创建日程",
       `主题：${draft.title}`,
       `开始日期：${draft.startDate}`,
       `结束日期：${draft.endDate}`,
-      `已选参会人：${candidate.name}`,
-      `参会人ID：${candidate.id}`,
     ];
 
+    if (draft.attendeeNameQueries && draft.attendeeNameQueries.length > 0) {
+      lines.push(`参会人：${draft.attendeeNameQueries.join("、")}`);
+    }
+    if (draft.selectedAttendeeNames && draft.selectedAttendeeNames.length > 0) {
+      lines.push(`已选参会人：${draft.selectedAttendeeNames.join("、")}`);
+    }
+    if (draft.selectedAttendeeIds && draft.selectedAttendeeIds.length > 0) {
+      lines.push(`参会人ID：${draft.selectedAttendeeIds.join("、")}`);
+    }
+    if (draft.ccNameQueries && draft.ccNameQueries.length > 0) {
+      lines.push(`抄送人：${draft.ccNameQueries.join("、")}`);
+    }
+    if (draft.selectedCcNames && draft.selectedCcNames.length > 0) {
+      lines.push(`已选抄送人：${draft.selectedCcNames.join("、")}`);
+    }
+    if (draft.selectedCcIds && draft.selectedCcIds.length > 0) {
+      lines.push(`抄送人ID：${draft.selectedCcIds.join("、")}`);
+    }
     if (draft.allDay !== undefined) {
       lines.push(`是否全天：${draft.allDay ? "是" : "否"}`);
     }
     if (draft.meetingRoom) {
       lines.push(`会议室：${draft.meetingRoom}`);
+    }
+    if (draft.videoMeetingCode) {
+      lines.push(`视频会议号：${draft.videoMeetingCode}`);
     }
     if (draft.description) {
       lines.push(`描述：${draft.description}`);
@@ -175,15 +192,72 @@ export default function App() {
     return lines.join("\n");
   }
 
-  async function handleSelectCandidate(candidateId: string): Promise<void> {
+  function buildSelectionPrompt(
+    draft: CreateCalendarDraft,
+    candidate: PersonLookupCandidate,
+  ): string {
+    const nextDraft: CreateCalendarDraft = {
+      ...draft,
+      attendeeNameQueries:
+        candidate.role === "attendee"
+          ? (draft.attendeeNameQueries ?? []).filter((name) => name !== candidate.sourceName)
+          : draft.attendeeNameQueries,
+      ccNameQueries:
+        candidate.role === "cc"
+          ? (draft.ccNameQueries ?? []).filter((name) => name !== candidate.sourceName)
+          : draft.ccNameQueries,
+      selectedAttendeeNames:
+        candidate.role === "attendee"
+          ? [...(draft.selectedAttendeeNames ?? []), candidate.name]
+          : draft.selectedAttendeeNames,
+      selectedAttendeeIds:
+        candidate.role === "attendee"
+          ? [...(draft.selectedAttendeeIds ?? []), candidate.id]
+          : draft.selectedAttendeeIds,
+      selectedCcNames:
+        candidate.role === "cc"
+          ? [...(draft.selectedCcNames ?? []), candidate.name]
+          : draft.selectedCcNames,
+      selectedCcIds:
+        candidate.role === "cc"
+          ? [...(draft.selectedCcIds ?? []), candidate.id]
+          : draft.selectedCcIds,
+    };
+
+    return buildCreatePrompt(nextDraft);
+  }
+
+  async function handleApplyDraft(messageId: string): Promise<void> {
+    const sourceMessage = messagesRef.current.find((message) => message.id === messageId);
+    const draft = sourceMessage?.meta?.draft;
+    if (!draft) {
+      return;
+    }
+
+    await submitUserContent(buildCreatePrompt(draft));
+  }
+
+  async function handleSelectCandidate(detail: {
+    candidateId: string;
+    role: "attendee" | "cc";
+    sourceName: string;
+  }): Promise<void> {
     const sourceMessage = [...messagesRef.current]
       .reverse()
       .find((message) =>
-        message.meta?.personCandidates?.some((candidate) => candidate.id === candidateId),
+        message.meta?.personCandidates?.some(
+          (candidate) =>
+            candidate.id === detail.candidateId &&
+            candidate.role === detail.role &&
+            candidate.sourceName === detail.sourceName,
+        ),
       );
 
     const candidate = sourceMessage?.meta?.personCandidates?.find(
-      (item) => item.id === candidateId,
+      (item) =>
+        item.id === detail.candidateId &&
+        item.role === detail.role &&
+        item.sourceName === detail.sourceName,
     );
     const draft = sourceMessage?.meta?.draft;
 
@@ -251,7 +325,12 @@ export default function App() {
                 >
                   <ChatMessageCard
                     message={message}
-                    onSelectCandidate={handleSelectCandidate}
+                    onApplyDraft={() => {
+                      void handleApplyDraft(message.id);
+                    }}
+                    onSelectCandidate={(detail) => {
+                      void handleSelectCandidate(detail);
+                    }}
                   />
                 </div>
               ))}

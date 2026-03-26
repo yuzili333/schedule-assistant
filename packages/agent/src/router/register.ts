@@ -1,5 +1,7 @@
 import {
   RegistryRecord,
+  SkillDefinition,
+  SkillRegistry,
   ToolDefinition,
   ToolRegistry,
 } from "./types";
@@ -69,6 +71,19 @@ abstract class ConfigurableRegistryCenter<
       .filter((record) => record.enabled && record.tags.includes(tag))
       .sort((a, b) => b.priority - a.priority)
       .map((record) => record.definition);
+  }
+}
+
+export class InMemorySkillRegistry
+  extends ConfigurableRegistryCenter<SkillDefinition>
+  implements SkillRegistry
+{
+  protected getId(skill: SkillDefinition): string {
+    return skill.skillId;
+  }
+
+  getById(skillId: string): SkillDefinition | undefined {
+    return this.records.get(skillId)?.definition;
   }
 }
 

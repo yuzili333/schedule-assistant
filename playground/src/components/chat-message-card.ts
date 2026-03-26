@@ -92,6 +92,39 @@ export class ChatMessageCardElement extends LitElement {
       margin-top: 14px;
     }
 
+    .recommendation {
+      margin-top: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(112, 90, 61, 0.16);
+      background: rgba(250, 242, 227, 0.92);
+      padding: 14px;
+    }
+
+    .recommendation-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .recommendation-list {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: #705a3d;
+      line-height: 1.5;
+    }
+
+    .recommendation-action {
+      margin-top: 12px;
+      border-radius: 999px;
+      border: 1px solid #a44b1a;
+      background: #a44b1a;
+      color: #fff6eb;
+      padding: 8px 14px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
     .candidate-card {
       border-radius: 18px;
       border: 1px solid rgba(112, 90, 61, 0.16);
@@ -181,6 +214,8 @@ export class ChatMessageCardElement extends LitElement {
                                 new CustomEvent("person-select", {
                                   detail: {
                                     candidateId: candidate.id,
+                                    role: candidate.role,
+                                    sourceName: candidate.sourceName,
                                   },
                                   bubbles: true,
                                   composed: true,
@@ -190,6 +225,9 @@ export class ChatMessageCardElement extends LitElement {
                           >
                             <div class="candidate-name">${candidate.name}</div>
                             <div class="candidate-sub">
+                              ${candidate.role === "attendee" ? "参会人" : "抄送人"} · ${candidate.sourceName}
+                            </div>
+                            <div class="candidate-sub">
                               ${candidate.department} · ${candidate.title}
                             </div>
                             <div class="candidate-sub">${candidate.email}</div>
@@ -197,6 +235,38 @@ export class ChatMessageCardElement extends LitElement {
                         `,
                       )}
                     </div>
+                  `
+                : nothing}
+              ${this.meta.recommendation
+                ? html`
+                    <section class="recommendation">
+                      <div class="recommendation-title">新增日程推荐填充</div>
+                      <div class="recommendation-list">
+                        <div>${this.meta.recommendation.summary}</div>
+                        <div>来源待办：${this.meta.recommendation.sourceTodoTitle}</div>
+                        ${this.meta.recommendation.recommendedFields.map(
+                          (field) => html`
+                            <div>
+                              ${field.fieldLabel}：${field.value}
+                              （${field.source === "recent_todo" ? "近期待办" : "最近日程"}）
+                            </div>
+                          `,
+                        )}
+                      </div>
+                      <button
+                        class="recommendation-action"
+                        @click=${() =>
+                          this.dispatchEvent(
+                            new CustomEvent("draft-apply", {
+                              bubbles: true,
+                              composed: true,
+                            }),
+                          )}
+                        type="button"
+                      >
+                        采纳推荐填充
+                      </button>
+                    </section>
                   `
                 : nothing}
             `
