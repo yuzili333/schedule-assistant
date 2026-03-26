@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
+  type CreateCalendarDraft,
   loadModelSettings,
+  type PersonCandidate,
   runScheduleAgent,
   type ModelSettings,
 } from "@schedule-assistant/agent";
@@ -8,9 +10,9 @@ import { ChatMessageCard } from "./components/ChatMessageCard";
 import { ChatItem } from "./types/chat";
 
 const suggestionPrompts = [
-  "帮我安排明天下午的客户回访和内部复盘",
-  "分析一下我今天的会议和待办，给一个更合理的节奏",
-  "把今天的日程摘要发给 alice@example.com",
+  "查询今天有哪些会议",
+  "创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n参会人：张三",
+  "创建日程\n主题：版本复盘\n开始日期：2026-03-27 10:00\n结束日期：2026-03-27 11:30\n会议室：6F Maple",
 ];
 
 function createMessage(
@@ -37,7 +39,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatItem[]>([
     createMessage(
       "assistant",
-      "我是你的日程 AI 助手。我会先通过 Router 判断请求属于查询、技能编排、工具执行还是 LLM 泛化推理，再返回安排建议或执行草案。",
+      "我是你的日程助手。目前只提供两类能力：查询日程、创建日程。创建日程时，“主题、开始日期、结束日期”为必填；如果你输入了参会人姓名，我会返回机构人员候选卡片供你手动选择。",
       {
         route: "system",
         confidence: 1,
@@ -91,13 +93,8 @@ export default function App() {
     );
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!canSubmit) {
-      return;
-    }
-
-    const userMessage = createMessage("user", input.trim());
+  async function submitUserContent(content: string): Promise<void> {
+    const userMessage = createMessage("user", content);
     const assistantMessage = createMessage("assistant", "");
     setMessages((current) => [
       ...current,
@@ -121,6 +118,8 @@ export default function App() {
         confidence: result.decision.confidence,
         latencyMs: result.latencyMs,
         requiresConfirm: result.decision.risk.requiresHumanConfirm,
+        personCandidates: result.resultMetadata?.personCandidates,
+        draft: result.resultMetadata?.draft,
       });
     } catch (error) {
       appendAssistantChunk(
@@ -139,6 +138,69 @@ export default function App() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function buildSelectionPrompt(
+    draft: CreateCalendarDraft,
+    candidate: PersonCandidate,
+  ): string {
+    const lines = [
+      "创建日程",
+      `主题：${draft.title}`,
+      `开始日期：${draft.startDate}`,
+      `结束日期：${draft.endDate}`,
+      `已选参会人：${candidate.name}`,
+      `参会人ID：${candidate.id}`,
+    ];
+
+    if (draft.allDay !== undefined) {
+      lines.push(`是否全天：${draft.allDay ? "是" : "否"}`);
+    }
+    if (draft.meetingRoom) {
+      lines.push(`会议室：${draft.meetingRoom}`);
+    }
+    if (draft.description) {
+      lines.push(`描述：${draft.description}`);
+    }
+    if (draft.attachments && draft.attachments.length > 0) {
+      lines.push(`附件：${draft.attachments.join("、")}`);
+    }
+    if (draft.reminderChannels && draft.reminderChannels.length > 0) {
+      lines.push(`提醒渠道：${draft.reminderChannels.join("、")}`);
+    }
+    if (draft.urgent !== undefined) {
+      lines.push(`紧急状态：${draft.urgent ? "是" : "否"}`);
+    }
+
+    return lines.join("\n");
+  }
+
+  async function handleSelectCandidate(candidateId: string): Promise<void> {
+    const sourceMessage = [...messagesRef.current]
+      .reverse()
+      .find((message) =>
+        message.meta?.personCandidates?.some((candidate) => candidate.id === candidateId),
+      );
+
+    const candidate = sourceMessage?.meta?.personCandidates?.find(
+      (item) => item.id === candidateId,
+    );
+    const draft = sourceMessage?.meta?.draft;
+
+    if (!candidate || !draft) {
+      return;
+    }
+
+    await submitUserContent(buildSelectionPrompt(draft, candidate));
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+
+    await submitUserContent(input.trim());
   }
 
   return (
@@ -187,7 +249,10 @@ export default function App() {
                   }
                   key={message.id}
                 >
-                  <ChatMessageCard message={message} />
+                  <ChatMessageCard
+                    message={message}
+                    onSelectCandidate={handleSelectCandidate}
+                  />
                 </div>
               ))}
             </div>
@@ -202,7 +267,7 @@ export default function App() {
             <textarea
               className="min-h-32 w-full rounded-[28px] border border-[var(--line)] bg-[rgba(255,250,241,0.92)] px-5 py-4 text-base outline-none transition focus:border-[var(--brand)]"
               onChange={(event) => setInput(event.target.value)}
-              placeholder="例如：明天下午安排客户回访，并避开已有会议。"
+              placeholder={"例如：创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n参会人：张三"}
               value={input}
             />
             <div className="mt-3 flex items-center justify-between">

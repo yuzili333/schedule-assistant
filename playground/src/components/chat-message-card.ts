@@ -86,6 +86,39 @@ export class ChatMessageCardElement extends LitElement {
       margin-top: 12px;
     }
 
+    .candidate-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .candidate-card {
+      border-radius: 18px;
+      border: 1px solid rgba(112, 90, 61, 0.16);
+      background: rgba(250, 242, 227, 0.92);
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .candidate-card:hover {
+      border-color: #a44b1a;
+      transform: translateY(-1px);
+    }
+
+    .candidate-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .candidate-sub {
+      margin-top: 4px;
+      color: #705a3d;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
     .badge {
       border-radius: 999px;
       padding: 5px 9px;
@@ -136,6 +169,36 @@ export class ChatMessageCardElement extends LitElement {
                   ? html`<span class="badge">requires confirm</span>`
                   : nothing}
               </div>
+              ${this.meta.personCandidates && this.meta.personCandidates.length > 0
+                ? html`
+                    <div class="candidate-grid">
+                      ${this.meta.personCandidates.map(
+                        (candidate) => html`
+                          <button
+                            class="candidate-card"
+                            @click=${() =>
+                              this.dispatchEvent(
+                                new CustomEvent("person-select", {
+                                  detail: {
+                                    candidateId: candidate.id,
+                                  },
+                                  bubbles: true,
+                                  composed: true,
+                                }),
+                              )}
+                            type="button"
+                          >
+                            <div class="candidate-name">${candidate.name}</div>
+                            <div class="candidate-sub">
+                              ${candidate.department} · ${candidate.title}
+                            </div>
+                            <div class="candidate-sub">${candidate.email}</div>
+                          </button>
+                        `,
+                      )}
+                    </div>
+                  `
+                : nothing}
             `
           : nothing}
       </article>

@@ -1,4 +1,4 @@
-export type RouteType = "direct" | "skill" | "tool" | "llm" | "block";
+export type RouteType = "direct" | "tool" | "llm" | "block";
 export type RiskLevel = "low" | "medium" | "high";
 export type ComplexityLevel = "low" | "medium" | "high";
 export type ToolEffectType =
@@ -57,11 +57,21 @@ export interface ExtractedEntities {
   emails: string[];
   timeText?: string;
   personNames: string[];
+  selectedPersonIds: string[];
+  selectedPersonNames: string[];
   numericParams: NumericEntity[];
   dateRange?: DateRangeEntity;
   priority?: "P0" | "P1" | "P2" | "high" | "medium" | "low" | "紧急";
   location?: string;
   meetingRoom?: string;
+  eventTitle?: string;
+  startDate?: string;
+  endDate?: string;
+  allDay?: boolean;
+  description?: string;
+  attachments: string[];
+  reminderChannels: string[];
+  urgent?: boolean;
 }
 
 export type EntityKey = keyof ExtractedEntities;
@@ -81,21 +91,6 @@ export interface DirectRuleMatch {
   confidence: number;
   reasonCodes: string[];
   payload?: Record<string, unknown>;
-}
-
-export interface SkillDefinition {
-  skillId: string;
-  name: string;
-  aliases: string[];
-  description: string;
-  supportedIntents: string[];
-  requiredEntities: string[];
-  optionalEntities?: string[];
-  sideEffect: boolean;
-  complexityBand: ComplexityLevel;
-  enabled?: boolean;
-  tags?: string[];
-  metadata?: Record<string, unknown>;
 }
 
 export interface ToolExecutionPolicy {
@@ -120,13 +115,6 @@ export interface ToolDefinition {
   aliases?: string[];
   tags?: string[];
   metadata?: Record<string, unknown>;
-}
-
-export interface SkillMatchResult {
-  score: number;
-  matchedSkill?: SkillDefinition;
-  reasonCodes: string[];
-  missingEntities: string[];
 }
 
 export interface ToolMatchResult {
@@ -160,7 +148,6 @@ export interface CostAssessment {
 
 export interface RouteScores {
   direct: number;
-  skill: number;
   tool: number;
   llm: number;
 }
@@ -189,7 +176,6 @@ export interface RouterContext {
 
 export interface RouterOptions {
   directThreshold: number;
-  skillThreshold: number;
   toolThreshold: number;
   llmThreshold: number;
   scoreCloseDelta: number;
@@ -197,7 +183,6 @@ export interface RouterOptions {
 }
 
 export interface RouteDependencies {
-  skillRegistry: SkillRegistry;
   toolRegistry: ToolRegistry;
   options?: Partial<RouterOptions>;
 }
@@ -209,16 +194,6 @@ export interface RegistryRecord<TDefinition> {
   priority: number;
   tags: string[];
   metadata?: Record<string, unknown>;
-}
-
-export interface SkillRegistry {
-  list(): SkillDefinition[];
-  getById(skillId: string): SkillDefinition | undefined;
-  getRecord(skillId: string): RegistryRecord<SkillDefinition> | undefined;
-  register(skill: SkillDefinition, options?: Partial<RegistryRecord<SkillDefinition>>): void;
-  setEnabled(skillId: string, enabled: boolean): void;
-  replaceAll(skills: SkillDefinition[]): void;
-  findByTag(tag: string): SkillDefinition[];
 }
 
 export interface ToolRegistry {

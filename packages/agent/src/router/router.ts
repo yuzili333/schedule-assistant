@@ -7,14 +7,13 @@ import {
 } from "./types";
 import { normalizeRequest } from "./normalizer";
 import { runDirectRules } from "./rule-engine";
-import { matchSkill, matchTool } from "./matchers";
+import { matchTool } from "./matchers";
 import { assessComplexity, assessCost, assessRisk } from "./evaluators";
 import { buildScores } from "./scorer";
 import { isScoreTooClose } from "./utils";
 
 const DEFAULT_OPTIONS: RouterOptions = {
   directThreshold: 0.8,
-  skillThreshold: 0.68,
   toolThreshold: 0.72,
   llmThreshold: 0.5,
   scoreCloseDelta: 0.08,
@@ -36,13 +35,47 @@ export class RequestRouter {
   route(req: Parameters<typeof normalizeRequest>[0], context?: RouterContext): RouteDecision {
     const normalized = normalizeRequest(req);
     const directRule = runDirectRules(normalized, context);
+    const directToolTarget = directRule.target?.startsWith("tool:")
+      ? String(directRule.payload?.toolName ?? directRule.target.replace("tool:", ""))
+      : undefined;
 
-    const skillMatch = matchSkill(normalized, this.deps.skillRegistry);
     const toolMatch = matchTool(normalized, this.deps.toolRegistry);
 
-    const complexity = assessComplexity(normalized, toolMatch, skillMatch);
+    const complexity = assessComplexity(normalized, toolMatch);
     const risk = assessRisk(normalized, toolMatch, context);
     const cost = assessCost(normalized, complexity, toolMatch);
+
+    if (directRule.hit && directToolTarget) {
+      return {
+        route: "tool",
+        target: directToolTarget,
+        confidence: Number(Math.max(directRule.confidence, 0.95).toFixed(3)),
+        scores: {
+          direct: directRule.confidence,
+          tool: Math.max(toolMatch.score, 0.9),
+          llm: 0.05,
+        },
+        reasonCodes: Array.from(
+          new Set([
+            ...directRule.reasonCodes,
+            ...toolMatch.reasonCodes,
+            "DIRECT_TOOL_ROUTE",
+          ]),
+        ),
+        extractedParams: normalized.entities,
+        missingParams: toolMatch.matchedTool?.toolName === directToolTarget
+          ? toolMatch.missingParams
+          : [],
+        complexity,
+        risk,
+        cost,
+        requiresLLM: false,
+        metadata: {
+          normalizedText: normalized.normalizedText,
+          intents: normalized.intents,
+        },
+      };
+    }
 
     if (this.options.blockHighRiskIrreversible && risk.requiresBlock) {
       return {
@@ -51,7 +84,6 @@ export class RequestRouter {
         confidence: 0.98,
         scores: {
           direct: 0,
-          skill: 0,
           tool: 0,
           llm: 0.2,
         },
@@ -71,7 +103,6 @@ export class RequestRouter {
     const scores = buildScores({
       normalized,
       directRule,
-      skillMatch,
       toolMatch,
       complexity,
       risk,
@@ -102,15 +133,6 @@ export class RequestRouter {
       confidence = Math.max(confidence, directRule.confidence);
     }
 
-    if (route === "skill") {
-      target = skillMatch.matchedSkill?.skillId;
-      missingParams = skillMatch.missingEntities;
-      if (!target || confidence < this.options.skillThreshold) {
-        route = "llm";
-        confidence = Math.max(scores.llm, 0.62);
-      }
-    }
-
     if (route === "tool") {
       target = target ?? toolMatch.matchedTool?.toolName;
       missingParams = toolMatch.missingParams;
@@ -136,7 +158,6 @@ export class RequestRouter {
 
     const reasonCodes = [
       ...(directRule.hit ? directRule.reasonCodes : []),
-      ...skillMatch.reasonCodes,
       ...toolMatch.reasonCodes,
       ...complexity.reasonCodes,
       ...risk.reasonCodes,

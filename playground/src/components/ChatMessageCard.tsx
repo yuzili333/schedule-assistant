@@ -10,7 +10,13 @@ type ChatMessageCardElement = HTMLElement & {
   isStreaming?: boolean;
 };
 
-export function ChatMessageCard({ message }: { message: ChatItem }) {
+export function ChatMessageCard({
+  message,
+  onSelectCandidate,
+}: {
+  message: ChatItem;
+  onSelectCandidate?: (candidateId: string) => void;
+}) {
   const ref = useRef<ChatMessageCardElement | null>(null);
 
   useEffect(() => {
@@ -24,6 +30,24 @@ export function ChatMessageCard({ message }: { message: ChatItem }) {
     ref.current.createdAt = message.createdAt;
     ref.current.isStreaming = message.isStreaming;
   }, [message]);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || !onSelectCandidate) {
+      return;
+    }
+
+    const handler = (event: Event) => {
+      const customEvent = event as CustomEvent<{ candidateId: string }>;
+      onSelectCandidate(customEvent.detail.candidateId);
+    };
+
+    element.addEventListener("person-select", handler as EventListener);
+
+    return () => {
+      element.removeEventListener("person-select", handler as EventListener);
+    };
+  }, [onSelectCandidate]);
 
   return <chat-message-card ref={ref} />;
 }

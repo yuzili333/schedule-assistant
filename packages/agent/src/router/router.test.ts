@@ -1,82 +1,54 @@
 import { describe, expect, it } from "vitest";
 import { RequestRouter } from "./router";
-import { InMemorySkillRegistry, InMemoryToolRegistry } from "./registries";
-import { skillDefinitions, toolDefinitions } from "../data/mock";
+import { InMemoryToolRegistry } from "./registries";
+import { toolDefinitions } from "../data/mock";
 import { normalizeRequest } from "./normalizer";
 
 describe("RequestRouter", () => {
   const router = new RequestRouter({
-    skillRegistry: new InMemorySkillRegistry(skillDefinitions),
     toolRegistry: new InMemoryToolRegistry(toolDefinitions),
   });
 
-  it("routes calendar actions to tool when time is provided", () => {
+  it("routes calendar create requests to create tool", () => {
     const decision = router.route({
-      id: "test-1",
-      text: "明天下午帮我安排一个会议",
+      id: "r1",
+      text: "创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00",
     });
 
     expect(decision.route).toBe("tool");
     expect(decision.target).toBe("create_calendar_event");
   });
 
-  it("falls back to llm for ambiguous analysis requests", () => {
+  it("routes calendar queries to query tool", () => {
     const decision = router.route({
-      id: "test-2",
-      text: "为什么我这周总是没有完整专注时间，帮我分析一下",
+      id: "r2",
+      text: "查询日程\n开始日期：2026-03-26 00:00\n结束日期：2026-03-26 23:59",
     });
 
-    expect(["skill", "llm"]).toContain(decision.route);
+    expect(decision.route).toBe("tool");
+    expect(decision.target).toBe("get_calendar_events");
   });
 
-  it("extracts richer entities for people, room, priority, numbers and date range", () => {
+  it("extracts event creation fields and selected attendee ids", () => {
     const normalized = normalizeRequest({
-      id: "test-3",
-      text: "请在下周一到下周三于 6F Maple 会议室邀请产品经理和张三开 2 小时 P1 评审会",
+      id: "r3",
+      text: "创建日程\n主题：版本复盘\n开始日期：2026-03-27 10:00\n结束日期：2026-03-27 11:30\n会议室：6F Maple\n提醒渠道：app、sms\n已选参会人：张三\n参会人ID：EMP-1001",
     });
 
+    expect(normalized.entities.eventTitle).toBe("版本复盘");
+    expect(normalized.entities.startDate).toBe("2026-03-27 10:00");
+    expect(normalized.entities.endDate).toBe("2026-03-27 11:30");
     expect(normalized.entities.meetingRoom).toBe("6F Maple");
-    expect(normalized.entities.location).toBe("6F Maple");
-    expect(normalized.entities.priority).toBe("P1");
-    expect(normalized.entities.personNames).toEqual(
-      expect.arrayContaining(["产品经理", "张三"]),
-    );
-    expect(normalized.entities.numericParams).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ value: 6 }),
-        expect.objectContaining({ value: 2, unit: "小时" }),
-      ]),
-    );
-    expect(normalized.entities.dateRange).toEqual(
-      expect.objectContaining({
-        start: "下周一",
-        end: "下周三",
-      }),
-    );
+    expect(normalized.entities.reminderChannels).toEqual(["app", "sms"]);
+    expect(normalized.entities.selectedPersonNames).toEqual(["张三"]);
+    expect(normalized.entities.selectedPersonIds).toEqual(["EMP-1001"]);
   });
 
-  it("blocks bulk write tools in prod", () => {
-    const decision = router.route(
-      {
-        id: "test-4",
-        text: "请帮我批量调整从今天到下周的 12 个会议到 6F Maple 会议室",
-      },
-      { environment: "prod" },
-    );
-
-    expect(decision.risk.effectType).toBe("bulk_write");
-    expect(decision.route).toBe("block");
-    expect(decision.risk.policyDecision).toBe("block");
-  });
-
-  it("supports registry center enable and tag lookup", () => {
+  it("supports registry enable and tag lookup", () => {
     const registry = new InMemoryToolRegistry(toolDefinitions);
 
-    expect(registry.findByTag("bulk")).toHaveLength(1);
-
-    registry.setEnabled("bulk_reschedule_events", false);
-
-    expect(registry.getByName("bulk_reschedule_events")).toBeDefined();
-    expect(registry.list().some((tool) => tool.toolName === "bulk_reschedule_events")).toBe(false);
+    expect(registry.findByTag("create")).toHaveLength(1);
+    registry.setEnabled("create_calendar_event", false);
+    expect(registry.list().some((tool) => tool.toolName === "create_calendar_event")).toBe(false);
   });
 });

@@ -4,7 +4,6 @@ import {
   DirectRuleMatch,
   RouteScores,
   RiskAssessment,
-  SkillMatchResult,
   ToolMatchResult,
   NormalizedRequest,
 } from "./types";
@@ -13,7 +12,6 @@ import { clamp01 } from "./utils";
 export function buildScores(params: {
   normalized: NormalizedRequest;
   directRule: DirectRuleMatch;
-  skillMatch: SkillMatchResult;
   toolMatch: ToolMatchResult;
   complexity: ComplexityAssessment;
   risk: RiskAssessment;
@@ -22,7 +20,6 @@ export function buildScores(params: {
   const {
     normalized,
     directRule,
-    skillMatch,
     toolMatch,
     complexity,
     risk,
@@ -34,14 +31,6 @@ export function buildScores(params: {
       (normalized.flags.hasQuestionForm ? 0.05 : 0) -
       complexity.score * 0.35 -
       risk.score * 0.2,
-  );
-
-  const skill = clamp01(
-    skillMatch.score * 0.55 +
-      (normalized.intents.includes("workflow") ? 0.2 : 0) +
-      (skillMatch.missingEntities.length === 0 ? 0.15 : 0) -
-      complexity.score * 0.1 -
-      risk.score * 0.1,
   );
 
   const tool = clamp01(
@@ -60,5 +49,5 @@ export function buildScores(params: {
       (normalized.intents.includes("analysis") ? 0.1 : 0),
   );
 
-  return { direct, skill, tool, llm };
+  return { direct, tool, llm };
 }

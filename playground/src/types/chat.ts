@@ -1,4 +1,8 @@
-import type { ModelSettings as AgentModelSettings } from "@schedule-assistant/agent";
+import type {
+  CreateCalendarDraft,
+  ModelSettings as AgentModelSettings,
+  PersonCandidate,
+} from "@schedule-assistant/agent";
 
 export type SenderRole = "user" | "assistant" | "system";
 
@@ -8,6 +12,8 @@ export interface ChatCardMeta {
   confidence: number;
   latencyMs: number;
   requiresConfirm: boolean;
+  personCandidates?: PersonCandidate[];
+  draft?: CreateCalendarDraft;
 }
 
 export interface ChatItem {

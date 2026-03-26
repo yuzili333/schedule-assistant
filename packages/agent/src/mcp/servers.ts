@@ -1,12 +1,12 @@
-import { mockEvents } from "../data/mock";
+import { mockEvents, mockPeople } from "../data/mock";
 import { McpServer } from "./types";
 
 export const calendarMcpServer: McpServer = {
   serverId: "calendar",
   name: "Calendar MCP Server",
-  description: "负责日程查询、会议草案生成和批量改期预览。",
+  description: "负责日程查询和创建草案。",
   version: "0.1.0",
-  capabilities: ["calendar.read", "calendar.write", "calendar.bulk"],
+  capabilities: ["calendar.read", "calendar.write"],
   tools: [
     {
       name: "list_events",
@@ -16,43 +16,45 @@ export const calendarMcpServer: McpServer = {
       name: "create_event_draft",
       description: "创建会议草案",
     },
-    {
-      name: "bulk_reschedule_preview",
-      description: "生成批量改期预览",
-    },
   ],
   invoke(toolName, args) {
     if (toolName === "list_events") {
+      const title = String(args?.title ?? "").trim();
+      const startDate = String(args?.startDate ?? "").trim();
+      const endDate = String(args?.endDate ?? "").trim();
+      const events = mockEvents.filter((event) => {
+        const matchedTitle = !title || event.title.includes(title);
+        const matchedStart = !startDate || event.startDate >= startDate;
+        const matchedEnd = !endDate || event.endDate <= endDate;
+        return matchedTitle && matchedStart && matchedEnd;
+      });
+
       return {
-        content: mockEvents
+        content: events
           .map((event) => {
-            const attendees = event.attendees.join("、");
-            return `- ${event.start}-${event.end} ${event.title}，地点 ${event.location}，参会人 ${attendees}`;
+            const attendees = event.attendees.map((item) => item.name).join("、");
+            return `- ${event.startDate} ~ ${event.endDate} ${event.title}，会议室 ${event.meetingRoom ?? "未填写"}，参会人 ${attendees}`;
           })
           .join("\n"),
-        data: mockEvents,
+        data: events,
       };
     }
 
     if (toolName === "create_event_draft") {
       return {
-        content: `已生成会议草案：\n- 标题：项目同步会\n- 时间：${String(args?.timeText ?? "待确认")}\n- 参会人：${String(
-          args?.recipients ?? "待补充",
-        )}\n- 地点：${String(args?.location ?? "待补充")}\n- 状态：待人工确认后写入日历`,
+        content: `已生成日程草案：\n- 主题：${String(args?.title ?? "待确认")}\n- 开始日期：${String(
+          args?.startDate ?? "待确认",
+        )}\n- 结束日期：${String(args?.endDate ?? "待确认")}\n- 是否全天：${String(
+          args?.allDay ? "是" : "否",
+        )}\n- 会议室：${String(args?.meetingRoom ?? "未填写")}\n- 描述：${String(
+          args?.description ?? "未填写",
+        )}\n- 附件：${String(args?.attachments ?? "未填写")}\n- 提醒渠道：${String(
+          args?.reminderChannels ?? "未填写",
+        )}\n- 紧急状态：${String(args?.urgent ? "是" : "否")}\n- 参会人：${String(
+          args?.recipients ?? "未选择",
+        )}\n- 状态：待人工确认后写入日程服务`,
         data: {
           status: "draft",
-          ...args,
-        },
-      };
-    }
-
-    if (toolName === "bulk_reschedule_preview") {
-      return {
-        content: `检测到批量改期请求，范围 ${String(
-          args?.dateRange ?? "待确认",
-        )}，预计影响 ${String(args?.count ?? "多")} 个日程。该操作需要审批后才能执行。`,
-        data: {
-          status: "preview",
           ...args,
         },
       };
@@ -62,63 +64,35 @@ export const calendarMcpServer: McpServer = {
   },
 };
 
-export const notificationMcpServer: McpServer = {
-  serverId: "notification",
-  name: "Notification MCP Server",
-  description: "负责邮件提醒与摘要发送预览。",
+export const organizationMcpServer: McpServer = {
+  serverId: "organization",
+  name: "Organization MCP Server",
+  description: "负责机构人员搜索与候选人查询。",
   version: "0.1.0",
-  capabilities: ["notification.send", "email.send"],
+  capabilities: ["organization.people.read"],
   tools: [
     {
-      name: "preview_schedule_digest",
-      description: "预览日程摘要发送",
+      name: "search_people",
+      description: "按人名搜索候选人员",
     },
   ],
   invoke(toolName, args) {
-    if (toolName === "preview_schedule_digest") {
+    if (toolName === "search_people") {
+      const keyword = String(args?.keyword ?? "").trim();
+      const candidates = mockPeople.filter((person) => person.name.includes(keyword));
       return {
-        content: `这是外部副作用动作，当前策略要求人工确认。\n建议先预览摘要，再确认收件人 ${String(
-          args?.recipients ?? "待补充",
-        )}。`,
-        data: {
-          status: "preview",
-          ...args,
-        },
+        content:
+          candidates.length > 0
+            ? `已为“${keyword}”找到 ${candidates.length} 位候选人员，请手动选择。`
+            : `未找到与“${keyword}”匹配的机构人员。`,
+        data: candidates,
       };
     }
 
-    throw new Error(`notification server 不支持工具 ${toolName}`);
-  },
-};
-
-export const weatherMcpServer: McpServer = {
-  serverId: "weather",
-  name: "Weather MCP Server",
-  description: "负责天气查询与出行建议。",
-  version: "0.1.0",
-  capabilities: ["weather.read", "travel.plan"],
-  tools: [
-    {
-      name: "get_weather_brief",
-      description: "获取天气摘要",
-    },
-  ],
-  invoke(toolName, args) {
-    if (toolName === "get_weather_brief") {
-      const location = String(args?.location ?? "默认办公区");
-      return {
-        content: `${location} 明天下午有小雨，适合线上会议；若需要外出，建议预留 20 分钟机动时间。`,
-        data: {
-          location,
-          condition: "light_rain",
-        },
-      };
-    }
-
-    throw new Error(`weather server 不支持工具 ${toolName}`);
+    throw new Error(`organization server 不支持工具 ${toolName}`);
   },
 };
 
 export function createDefaultMcpServers(): McpServer[] {
-  return [calendarMcpServer, notificationMcpServer, weatherMcpServer];
+  return [calendarMcpServer, organizationMcpServer];
 }

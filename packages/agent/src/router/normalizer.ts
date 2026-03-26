@@ -7,99 +7,14 @@ import {
 } from "./types";
 import { includesAny, tokenize, uniq } from "./utils";
 
-const ACTION_VERBS = [
-  "查",
-  "查询",
-  "获取",
-  "创建",
-  "新建",
-  "删除",
-  "更新",
-  "发送",
-  "发",
-  "生成",
-  "总结",
-  "分析",
-  "安排",
-  "预定",
-  "schedule",
-  "create",
-  "delete",
-  "update",
-  "send",
-  "generate",
-  "analyze",
-  "query",
-  "get",
-];
-
-const SIDE_EFFECT_VERBS = [
-  "创建",
-  "新建",
-  "删除",
-  "更新",
-  "发送",
-  "审批",
-  "提交",
-  "publish",
-  "create",
-  "delete",
-  "update",
-  "send",
-  "approve",
-  "submit",
-];
-
-const QUESTION_HINTS = ["吗", "什么", "为何", "为什么", "how", "what", "why", "?"];
-
-const TIME_HINTS = [
-  "今天",
-  "明天",
-  "后天",
-  "本周",
-  "下周",
-  "下午",
-  "上午",
-  "tomorrow",
-  "today",
-  "next week",
-  "pm",
-  "am",
-];
-
-const PRIORITY_KEYWORDS = [
-  "p0",
-  "p1",
-  "p2",
-  "高优",
-  "中优",
-  "低优",
-  "高优先级",
-  "中优先级",
-  "低优先级",
-  "紧急",
-];
-
-const LOCATION_PREPOSITIONS = ["在", "到", "去", "于"];
+const ACTION_VERBS = ["创建", "新建", "安排", "create"];
+const SIDE_EFFECT_VERBS = ["创建", "新建", "create"];
+const QUESTION_HINTS = ["吗", "哪些", "查询", "查看", "?", "what"];
+const TIME_HINTS = ["今天", "明天", "后天", "本周", "下周", "上午", "下午"];
+const PRIORITY_KEYWORDS = ["p0", "p1", "p2", "紧急"];
 
 function extractResourceId(text: string): string | undefined {
-  const patterns = [
-    /\bINC-\d+\b/i,
-    /\bORD-\d+\b/i,
-    /\bTICKET-\d+\b/i,
-    /\b[A-Z]{2,10}-\d{2,}\b/,
-    /\b\d{5,}\b/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) return match[0];
-  }
-  return undefined;
-}
-
-function extractEmail(text: string): string | undefined {
-  const match = text.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i);
+  const match = text.match(/\b[A-Z]{2,10}-\d{2,}\b/);
   return match?.[0];
 }
 
@@ -109,17 +24,23 @@ function extractEmails(text: string): string[] {
   );
 }
 
-function extractTimeText(text: string): string | undefined {
-  const timePatterns = [
-    /(今天|明天|后天|本周|下周|下午|上午)[^\s，。,.]*/u,
-    /\b(today|tomorrow|next week|this week|[0-9]{1,2}(:[0-9]{2})?\s?(am|pm)?)\b/i,
-  ];
+function extractEmail(text: string): string | undefined {
+  return extractEmails(text)[0];
+}
 
-  for (const pattern of timePatterns) {
-    const match = text.match(pattern);
-    if (match) return match[0];
+function extractFieldValue(text: string, labels: string[]): string | undefined {
+  for (const label of labels) {
+    const match = text.match(new RegExp(`${label}[：:]\\s*([^\\n]+)`));
+    if (match?.[1]) {
+      return match[1].trim();
+    }
   }
   return undefined;
+}
+
+function extractTimeText(text: string): string | undefined {
+  const match = text.match(/(今天|明天|后天|本周|下周)[^\s，。,.]*/u);
+  return match?.[0];
 }
 
 function extractDateRange(text: string): DateRangeEntity | undefined {
@@ -129,40 +50,28 @@ function extractDateRange(text: string): DateRangeEntity | undefined {
     new RegExp(`(?:从|自)?\\s*${dateToken}\\s*(到|至)\\s*${dateToken}`, "u"),
   );
 
-  if (betweenMatch) {
-    return {
-      raw: betweenMatch[0],
-      start: betweenMatch[1],
-      end: betweenMatch[3],
-    };
+  if (!betweenMatch) {
+    return undefined;
   }
 
-  const englishRange = text.match(
-    /\bfrom\s+(today|tomorrow|this week|next week)\s+to\s+(today|tomorrow|this week|next week)\b/i,
-  );
-  if (englishRange) {
-    return {
-      raw: englishRange[0],
-      start: englishRange[1],
-      end: englishRange[2],
-    };
-  }
-
-  return undefined;
+  return {
+    raw: betweenMatch[0],
+    start: betweenMatch[1],
+    end: betweenMatch[3],
+  };
 }
 
 function extractPriority(text: string): ExtractedEntities["priority"] {
   const normalized = text.toLowerCase();
   if (normalized.includes("p0") || text.includes("紧急")) return normalized.includes("p0") ? "P0" : "紧急";
-  if (normalized.includes("p1") || text.includes("高优")) return normalized.includes("p1") ? "P1" : "high";
-  if (normalized.includes("p2") || text.includes("中优")) return normalized.includes("p2") ? "P2" : "medium";
-  if (text.includes("低优")) return "low";
+  if (normalized.includes("p1")) return "P1";
+  if (normalized.includes("p2")) return "P2";
   return undefined;
 }
 
 function extractNumericParams(text: string): NumericEntity[] {
   const matches = Array.from(
-    text.matchAll(/(\d+(?:\.\d+)?)\s*(分钟|小时|天|人|个|间|次|hour|hours|minute|minutes|day|days)?/gi),
+    text.matchAll(/(\d+(?:\.\d+)?)\s*(分钟|小时|天|人|个|次)?/gi),
   );
 
   return matches
@@ -171,82 +80,51 @@ function extractNumericParams(text: string): NumericEntity[] {
       value: Number(match[1]),
       unit: match[2],
     }))
-    .filter((entity) => !Number.isNaN(entity.value));
+    .filter((item) => !Number.isNaN(item.value));
 }
 
-function extractPeople(text: string): string[] {
-  const roleMatches = text.match(
-    /(产品经理|设计师|前端负责人|前端开发|后端开发|客户成功|销售|交付经理|架构师|测试负责人)/g,
-  ) ?? [];
-  const chineseNameMatches =
-    text.match(/(?:叫|联系|通知|邀请|给|和)([一-龥]{2,4})(?=开会|同步|发邮件|安排|参加|沟通|确认|，|。|\s|$)/g) ?? [];
-  const cleanedNames = chineseNameMatches.map((value) =>
-    value
-      .replace(/^(叫|联系|通知|邀请|给|和)/, "")
-      .replace(/(开|会|同步|安排|参加|沟通|确认)+$/, ""),
+function extractPersonNames(text: string): string[] {
+  const labeled = extractFieldValue(text, ["参会人", "邀请人"]);
+  if (labeled) {
+    return labeled.split(/[、,，;；]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  const matches =
+    text.match(/(?:邀请|和)([一-龥]{2,4})(?=开会|参加|参会|，|。|\s|$)/g) ?? [];
+
+  return Array.from(
+    new Set(
+      matches
+        .map((item) => item.replace(/^(邀请|和)/, "").trim())
+        .filter(Boolean),
+    ),
   );
-  return Array.from(new Set([...roleMatches, ...cleanedNames].filter(Boolean)));
 }
 
 function extractMeetingRoom(text: string): string | undefined {
-  const match = text.match(
-    /\b([1-9]\d?\s*[Ff]\s*[A-Za-z][A-Za-z0-9-]*|[A-Z][A-Za-z0-9-]*\s*会议室|[一-龥A-Za-z0-9-]+会议室)\b/u,
-  );
+  const fieldValue = extractFieldValue(text, ["会议室"]);
+  if (fieldValue) {
+    return fieldValue;
+  }
+
+  const match = text.match(/\b([1-9]\d?\s*[Ff]\s*[A-Za-z][A-Za-z0-9-]*)\b/u);
   return match?.[0]?.trim();
-}
-
-function extractLocation(text: string): string | undefined {
-  const room = extractMeetingRoom(text);
-  if (room) {
-    return room;
-  }
-
-  for (const preposition of LOCATION_PREPOSITIONS) {
-    const match = text.match(
-      new RegExp(`${preposition}([\\u4e00-\\u9fa5A-Za-z0-9-]{2,20})(开会|同步|见面|碰头|会面|汇报|讨论)?`),
-    );
-    if (match?.[1]) {
-      return match[1];
-    }
-  }
-
-  const onlineMatch = text.match(/\b(Tencent Meeting|Zoom|Google Meet|会议室[A-Za-z0-9-]*)\b/i);
-  return onlineMatch?.[0];
 }
 
 function detectIntents(text: string): string[] {
   const intents: string[] = [];
 
-  if (includesAny(text, ["为什么", "分析", "原因", "why", "analyze"])) {
-    intents.push("analysis");
-  }
-  if (includesAny(text, ["生成", "总结", "写", "generate", "summarize", "write"])) {
-    intents.push("generation");
-  }
-  if (includesAny(text, ["查询", "查", "获取", "query", "get", "status"])) {
+  if (includesAny(text, ["查询", "查", "获取", "查看", "query", "get"])) {
     intents.push("query");
   }
-  if (
-    includesAny(text, [
-      "创建",
-      "发送",
-      "删除",
-      "更新",
-      "安排",
-      "预定",
-      "schedule",
-      "create",
-      "send",
-      "delete",
-      "update",
-    ])
-  ) {
+
+  if (includesAny(text, ["创建", "新建", "安排", "create"])) {
     intents.push("action");
   }
-  if (includesAny(text, ["周报", "会议纪要", "action items", "待办", "workflow"])) {
-    intents.push("workflow");
+
+  if (intents.length === 0) {
+    intents.push("unknown");
   }
-  if (intents.length === 0) intents.push("unknown");
 
   return uniq(intents);
 }
@@ -255,30 +133,49 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
   const normalizedText = req.text.trim().toLowerCase();
   const tokens = tokenize(normalizedText);
 
-  const resourceId = extractResourceId(req.text);
   const emails = extractEmails(req.text);
   const email = extractEmail(req.text);
+  const resourceId = extractResourceId(req.text);
   const timeText = extractTimeText(req.text);
   const dateRange = extractDateRange(req.text);
   const priority = extractPriority(req.text);
-  const location = extractLocation(req.text);
   const meetingRoom = extractMeetingRoom(req.text);
-  const personNames = extractPeople(req.text);
+  const personNames = extractPersonNames(req.text);
+  const selectedPersonIds = (
+    extractFieldValue(req.text, ["参会人ID"])?.split(/[、,，;；\s]+/) ?? []
+  ).filter(Boolean);
+  const selectedPersonNames = (
+    extractFieldValue(req.text, ["已选参会人"])?.split(/[、,，;；]/) ?? []
+  )
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const eventTitle =
+    extractFieldValue(req.text, ["主题", "标题"]) ??
+    req.text.match(/创建(?:一个)?(?:日程|会议)([^，。]*)/)?.[1]?.trim();
+  const startDate = extractFieldValue(req.text, ["开始日期", "开始时间", "开始"]);
+  const endDate = extractFieldValue(req.text, ["结束日期", "结束时间", "结束"]);
+  const allDayRaw = extractFieldValue(req.text, ["是否全天"]);
+  const description = extractFieldValue(req.text, ["描述", "说明"]);
+  const attachments = (
+    extractFieldValue(req.text, ["附件"])?.split(/[、,，;；]/) ?? []
+  )
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const reminderChannels = (
+    extractFieldValue(req.text, ["提醒渠道"])?.split(/[、,，;；]/) ?? []
+  )
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const urgentRaw = extractFieldValue(req.text, ["紧急状态", "紧急"]);
   const numericParams = extractNumericParams(req.text);
   const intents = detectIntents(normalizedText);
-
-  const hasExplicitAction = includesAny(normalizedText, ACTION_VERBS);
-  const hasSideEffectVerb = includesAny(normalizedText, SIDE_EFFECT_VERBS);
-  const hasQuestionForm = includesAny(normalizedText, QUESTION_HINTS);
-  const hasMultiIntent = intents.length > 1;
-  const hasTimeExpression = includesAny(normalizedText, TIME_HINTS) || !!timeText;
-  const hasEmail = !!email;
-  const hasDateRange = !!dateRange;
-  const hasPriority = includesAny(normalizedText, PRIORITY_KEYWORDS) || !!priority;
-  const hasLocation = !!location;
-  const hasMeetingRoom = !!meetingRoom;
-  const hasPeople = personNames.length > 0;
-  const hasNumericParams = numericParams.length > 0;
+  const allDay =
+    allDayRaw === "是" || allDayRaw?.toLowerCase() === "true"
+      ? true
+      : allDayRaw === "否" || allDayRaw?.toLowerCase() === "false"
+        ? false
+        : undefined;
+  const urgent = urgentRaw === "是" || urgentRaw === "紧急" || priority === "紧急";
 
   return {
     raw: req,
@@ -291,26 +188,36 @@ export function normalizeRequest(req: UserRequest): NormalizedRequest {
       emails,
       timeText,
       personNames,
+      selectedPersonIds,
+      selectedPersonNames,
       numericParams,
       dateRange,
       priority,
-      location,
       meetingRoom,
+      location: meetingRoom,
+      eventTitle,
+      startDate,
+      endDate,
+      allDay,
+      description,
+      attachments,
+      reminderChannels,
+      urgent,
     },
     flags: {
       hasResourceId: !!resourceId,
-      hasExplicitAction,
-      hasSideEffectVerb,
-      hasQuestionForm,
-      hasMultiIntent,
-      hasTimeExpression,
-      hasEmail,
-      hasDateRange,
-      hasPriority,
-      hasLocation,
-      hasMeetingRoom,
-      hasPeople,
-      hasNumericParams,
+      hasExplicitAction: includesAny(normalizedText, ACTION_VERBS),
+      hasSideEffectVerb: includesAny(normalizedText, SIDE_EFFECT_VERBS),
+      hasQuestionForm: includesAny(normalizedText, QUESTION_HINTS),
+      hasMultiIntent: intents.length > 1,
+      hasTimeExpression: includesAny(normalizedText, TIME_HINTS) || !!timeText,
+      hasEmail: !!email,
+      hasDateRange: !!dateRange,
+      hasPriority: includesAny(normalizedText, PRIORITY_KEYWORDS) || !!priority,
+      hasLocation: !!meetingRoom,
+      hasMeetingRoom: !!meetingRoom,
+      hasPeople: personNames.length > 0 || selectedPersonNames.length > 0,
+      hasNumericParams: numericParams.length > 0,
     },
   };
 }

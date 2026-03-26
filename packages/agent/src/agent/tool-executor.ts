@@ -1,10 +1,15 @@
 import {
+  AgentMessage,
+  AgentResultMetadata,
+  CreateCalendarDraft,
+  PersonCandidate,
+} from "../types";
+import {
   ExtractedEntities,
   InMemoryToolRegistry,
   RouteDecision,
   ToolDefinition,
 } from "../router";
-import { AgentMessage } from "../types";
 import { McpClient } from "../mcp";
 
 export interface ToolExecutionContext {
@@ -17,7 +22,7 @@ export interface ToolExecutionContext {
 export interface ToolExecutionResult {
   content: string;
   status: "completed" | "preview" | "blocked" | "unsupported";
-  metadata?: Record<string, unknown>;
+  metadata?: AgentResultMetadata & Record<string, unknown>;
 }
 
 export interface ToolExecutor {
@@ -54,28 +59,55 @@ export class InMemoryToolExecutorRegistry implements ToolExecutorRegistry {
 }
 
 function joinRecipients(entities: ExtractedEntities): string {
+  if (entities.selectedPersonNames.length > 0) {
+    return entities.selectedPersonNames.join("、");
+  }
   if (entities.personNames.length > 0) {
     return entities.personNames.join("、");
   }
   if (entities.emails.length > 0) {
     return entities.emails.join("、");
   }
-  return entities.email ?? "待补充";
+  return "未选择";
+}
+
+function buildDraft(entities: ExtractedEntities): CreateCalendarDraft {
+  return {
+    title: entities.eventTitle ?? "",
+    startDate: entities.startDate ?? "",
+    endDate: entities.endDate ?? "",
+    allDay: entities.allDay,
+    meetingRoom: entities.meetingRoom,
+    description: entities.description,
+    attachments: entities.attachments,
+    reminderChannels: entities.reminderChannels,
+    urgent: entities.urgent,
+    attendeeNameQuery: entities.personNames[0],
+    selectedAttendeeIds: entities.selectedPersonIds,
+    selectedAttendeeNames: entities.selectedPersonNames,
+  };
 }
 
 export const getCalendarEventsExecutor: ToolExecutor = {
   toolName: "get_calendar_events",
-  async execute({ mcpClient }) {
+  async execute({ mcpClient, decision }) {
     const result = await mcpClient.callTool({
       serverId: "calendar",
       toolName: "list_events",
+      args: {
+        title: decision.extractedParams.eventTitle,
+        startDate: decision.extractedParams.startDate ?? decision.extractedParams.dateRange?.start,
+        endDate: decision.extractedParams.endDate ?? decision.extractedParams.dateRange?.end,
+      },
     });
 
     return {
-      content: `今天已识别到以下日程：\n${result.content}`,
+      content: result.content || "未查询到符合条件的日程数据。",
       status: "completed",
       metadata: {
-        source: "mcp:calendar/list_events",
+        queriedEvents: Array.isArray(result.data)
+          ? (result.data as AgentResultMetadata["queriedEvents"])
+          : undefined,
       },
     };
   },
@@ -84,10 +116,44 @@ export const getCalendarEventsExecutor: ToolExecutor = {
 export const createCalendarEventExecutor: ToolExecutor = {
   toolName: "create_calendar_event",
   async execute({ decision, mcpClient }) {
+    const draft = buildDraft(decision.extractedParams);
+
     if (decision.missingParams.length > 0) {
       return {
-        content: `可以创建日程，但还缺少参数：${decision.missingParams.join("、")}。请补充具体时间或参会人。`,
+        content: `可以创建日程，但还缺少参数：${decision.missingParams.join("、")}。请至少补充“主题、开始日期、结束日期”。`,
         status: "preview",
+        metadata: {
+          draft,
+        },
+      };
+    }
+
+    if (
+      decision.extractedParams.personNames.length > 0 &&
+      decision.extractedParams.selectedPersonIds.length === 0
+    ) {
+      const searchName = decision.extractedParams.personNames[0];
+      const peopleResult = await mcpClient.callTool({
+        serverId: "organization",
+        toolName: "search_people",
+        args: {
+          keyword: searchName,
+        },
+      });
+      const candidates = Array.isArray(peopleResult.data)
+        ? (peopleResult.data as PersonCandidate[])
+        : [];
+
+      return {
+        content:
+          candidates.length > 0
+            ? `已根据参会人姓名“${searchName}”找到候选人员，请在下方卡片中手动选择。`
+            : `未找到参会人“${searchName}”的候选人员，请更换姓名或稍后重试。`,
+        status: "preview",
+        metadata: {
+          draft,
+          personCandidates: candidates,
+        },
       };
     }
 
@@ -95,32 +161,15 @@ export const createCalendarEventExecutor: ToolExecutor = {
       serverId: "calendar",
       toolName: "create_event_draft",
       args: {
-        timeText: decision.extractedParams.timeText,
-        recipients: joinRecipients(decision.extractedParams),
-        location:
-          decision.extractedParams.meetingRoom ??
-          decision.extractedParams.location ??
-          "待补充",
-      },
-    });
-
-    return {
-      content: result.content,
-      status: "preview",
-      metadata: {
-        source: "mcp:calendar/create_event_draft",
-      },
-    };
-  },
-};
-
-export const sendScheduleDigestExecutor: ToolExecutor = {
-  toolName: "send_schedule_digest",
-  async execute({ decision, mcpClient }) {
-    const result = await mcpClient.callTool({
-      serverId: "notification",
-      toolName: "preview_schedule_digest",
-      args: {
+        title: decision.extractedParams.eventTitle,
+        startDate: decision.extractedParams.startDate,
+        endDate: decision.extractedParams.endDate,
+        allDay: decision.extractedParams.allDay ?? false,
+        meetingRoom: decision.extractedParams.meetingRoom,
+        description: decision.extractedParams.description,
+        attachments: decision.extractedParams.attachments.join("、"),
+        reminderChannels: decision.extractedParams.reminderChannels.join("、"),
+        urgent: decision.extractedParams.urgent ?? false,
         recipients: joinRecipients(decision.extractedParams),
       },
     });
@@ -129,63 +178,7 @@ export const sendScheduleDigestExecutor: ToolExecutor = {
       content: result.content,
       status: "preview",
       metadata: {
-        policyDecision: decision.risk.policyDecision,
-        source: "mcp:notification/preview_schedule_digest",
-      },
-    };
-  },
-};
-
-export const bulkRescheduleExecutor: ToolExecutor = {
-  toolName: "bulk_reschedule_events",
-  async execute({ decision, mcpClient }) {
-    const count =
-      decision.extractedParams.numericParams.find((entity) => entity.unit === "个")
-        ?.value ??
-      decision.extractedParams.numericParams[0]?.value ??
-      "多";
-
-    const result = await mcpClient.callTool({
-      serverId: "calendar",
-      toolName: "bulk_reschedule_preview",
-      args: {
-        dateRange: decision.extractedParams.dateRange?.raw ?? "待确认",
-        count,
-      },
-    });
-
-    return {
-      content: result.content,
-      status: "blocked",
-      metadata: {
-        policyDecision: decision.risk.policyDecision,
-        source: "mcp:calendar/bulk_reschedule_preview",
-      },
-    };
-  },
-};
-
-export const weatherExecutor: ToolExecutor = {
-  toolName: "get_weather",
-  async execute({ decision, mcpClient }) {
-    const location =
-      decision.extractedParams.location ??
-      decision.extractedParams.meetingRoom ??
-      "默认办公区";
-
-    const result = await mcpClient.callTool({
-      serverId: "weather",
-      toolName: "get_weather_brief",
-      args: {
-        location,
-      },
-    });
-
-    return {
-      content: result.content,
-      status: "completed",
-      metadata: {
-        source: "mcp:weather/get_weather_brief",
+        draft,
       },
     };
   },
@@ -195,9 +188,6 @@ export function createDefaultToolExecutorRegistry(): InMemoryToolExecutorRegistr
   return new InMemoryToolExecutorRegistry([
     getCalendarEventsExecutor,
     createCalendarEventExecutor,
-    sendScheduleDigestExecutor,
-    bulkRescheduleExecutor,
-    weatherExecutor,
   ]);
 }
 
@@ -231,17 +221,6 @@ export async function dispatchToolExecution(params: {
     return {
       content: `工具 ${toolName} 已命中，但当前没有对应的 ToolExecutor。`,
       status: "unsupported",
-    };
-  }
-
-  if (decision.risk.policyDecision === "block") {
-    return {
-      content: `工具 ${toolName} 属于 ${tool.executionPolicy.effectType}，当前策略已阻断自动执行。`,
-      status: "blocked",
-      metadata: {
-        policyDecision: decision.risk.policyDecision,
-        effectType: tool.executionPolicy.effectType,
-      },
     };
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InMemoryToolRegistry, RequestRouter, InMemorySkillRegistry } from "../router";
-import { skillDefinitions, toolDefinitions } from "../data/mock";
+import { InMemoryToolRegistry, RequestRouter } from "../router";
+import { toolDefinitions } from "../data/mock";
 import {
   createDefaultToolExecutorRegistry,
   dispatchToolExecution,
@@ -13,7 +13,6 @@ import {
 } from "../mcp";
 
 const router = new RequestRouter({
-  skillRegistry: new InMemorySkillRegistry(skillDefinitions),
   toolRegistry: new InMemoryToolRegistry(toolDefinitions),
 });
 
@@ -22,71 +21,50 @@ describe("ToolExecutor", () => {
     new InMemoryMcpServerRegistry(createDefaultMcpServers()),
   );
 
-  it("dispatches tool execution through executor registry", async () => {
-    const toolRegistry = new InMemoryToolRegistry(toolDefinitions);
-    const executorRegistry = createDefaultToolExecutorRegistry();
-    const decision = router.route({
-      id: "tool-1",
-      text: "今天有哪些会议",
-    });
-
+  it("queries calendar events through mcp", async () => {
     const result = await dispatchToolExecution({
-      decision: {
-        ...decision,
-        route: "tool",
-        target: "get_calendar_events",
-      },
+      decision: router.route({
+        id: "tool-1",
+        text: "查询日程\n开始日期：2026-03-26 00:00\n结束日期：2026-03-26 23:59",
+      }),
       messages: [],
-      toolRegistry,
-      executorRegistry,
+      toolRegistry: new InMemoryToolRegistry(toolDefinitions),
+      executorRegistry: createDefaultToolExecutorRegistry(),
       mcpClient,
     });
 
     expect(result.status).toBe("completed");
-    expect(result.content).toContain("今天已识别到以下日程");
+    expect(result.content).toContain("需求评审会");
   });
 
-  it("returns unsupported when tool executor is missing", async () => {
-    const toolRegistry = new InMemoryToolRegistry(toolDefinitions);
-    const executorRegistry = new InMemoryToolExecutorRegistry();
-
-    const decision = router.route({
-      id: "tool-2",
-      text: "明天下午帮我安排一个会议",
+  it("returns person candidates before creating event when attendee name is ambiguous", async () => {
+    const result = await dispatchToolExecution({
+      decision: router.route({
+        id: "tool-2",
+        text: "创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n参会人：张三",
+      }),
+      messages: [],
+      toolRegistry: new InMemoryToolRegistry(toolDefinitions),
+      executorRegistry: createDefaultToolExecutorRegistry(),
+      mcpClient,
     });
 
+    expect(result.status).toBe("preview");
+    expect(result.metadata?.personCandidates).toHaveLength(2);
+  });
+
+  it("returns unsupported when executor is missing", async () => {
     const result = await dispatchToolExecution({
-      decision,
+      decision: router.route({
+        id: "tool-3",
+        text: "查询日程",
+      }),
       messages: [],
-      toolRegistry,
-      executorRegistry,
+      toolRegistry: new InMemoryToolRegistry(toolDefinitions),
+      executorRegistry: new InMemoryToolExecutorRegistry(),
       mcpClient,
     });
 
     expect(result.status).toBe("unsupported");
-  });
-
-  it("blocks execution when policy decision is block", async () => {
-    const toolRegistry = new InMemoryToolRegistry(toolDefinitions);
-    const executorRegistry = createDefaultToolExecutorRegistry();
-
-    const decision = router.route(
-      {
-        id: "tool-3",
-        text: "请帮我批量调整从今天到下周的 12 个会议到 6F Maple 会议室",
-      },
-      { environment: "prod" },
-    );
-
-    const result = await dispatchToolExecution({
-      decision,
-      messages: [],
-      toolRegistry,
-      executorRegistry,
-      mcpClient,
-    });
-
-    expect(result.status).toBe("blocked");
-    expect(result.content).toContain("当前策略已阻断自动执行");
   });
 });

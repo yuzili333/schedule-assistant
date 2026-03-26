@@ -1,4 +1,1 @@
-export {
-  InMemorySkillRegistry,
-  InMemoryToolRegistry,
-} from "./register";
+export { InMemoryToolRegistry } from "./register";

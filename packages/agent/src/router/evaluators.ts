@@ -5,7 +5,6 @@ import {
   RiskAssessment,
   ToolEffectType,
   ToolMatchResult,
-  SkillMatchResult,
   RouterContext,
 } from "./types";
 import { clamp01, toComplexityLevel, toRiskLevel } from "./utils";
@@ -13,7 +12,6 @@ import { clamp01, toComplexityLevel, toRiskLevel } from "./utils";
 export function assessComplexity(
   normalized: NormalizedRequest,
   toolMatch: ToolMatchResult,
-  skillMatch: SkillMatchResult,
 ): ComplexityAssessment {
   let score = 0;
   const reasonCodes: string[] = [];
@@ -33,7 +31,7 @@ export function assessComplexity(
     reasonCodes.push("LONG_CONTEXT_DEPENDENCY");
   }
 
-  if (toolMatch.missingParams.length > 0 || skillMatch.missingEntities.length > 0) {
+  if (toolMatch.missingParams.length > 0) {
     score += 0.15;
     reasonCodes.push("MISSING_REQUIRED_INPUT");
   }
@@ -46,9 +44,9 @@ export function assessComplexity(
     reasonCodes.push("OPEN_ENDED_OUTPUT");
   }
 
-  if (toolMatch.score < 0.5 && skillMatch.score < 0.5) {
+  if (toolMatch.score < 0.5) {
     score += 0.2;
-    reasonCodes.push("LOW_CAPABILITY_MATCH");
+    reasonCodes.push("LOW_TOOL_MATCH");
   }
 
   score = clamp01(score);
