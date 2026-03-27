@@ -1,12 +1,15 @@
 import {
   AgentMessage,
   AgentResultMetadata,
+  CachedCalendarSubmission,
   CalendarEventRecord,
   CreateCalendarDraft,
   PersonLookupCandidate,
   ScheduleRecommendation,
 } from "../types";
 import { McpClient } from "../mcp";
+import { getLatestValidCalendarSubmission } from "./storage";
+import { normalizeRequest } from "../router";
 
 interface TodoMessageRecord {
   id: string;
@@ -111,6 +114,21 @@ function findRecentValue(
   return recentEvent.ccRecipients?.map((item) => item.name).join("、");
 }
 
+function findCachedValue(
+  cachedSubmission: CachedCalendarSubmission | undefined,
+  field: "attendees" | "ccRecipients",
+): string | undefined {
+  if (!cachedSubmission) {
+    return undefined;
+  }
+
+  if (field === "attendees") {
+    return cachedSubmission.attendeeNames.join("、");
+  }
+
+  return cachedSubmission.ccNames.join("、");
+}
+
 export async function runScheduleSkill(
   context: SkillExecutionContext,
 ): Promise<SkillExecutionResult> {
@@ -137,6 +155,26 @@ export async function runScheduleSkill(
   const recentEvent = (Array.isArray(recentEventResult.data)
     ? recentEventResult.data[0]
     : undefined) as CalendarEventRecord | undefined;
+  const latestCache = getLatestValidCalendarSubmission();
+  const latestUserMessage = [...context.messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const normalizedLatestMessage = latestUserMessage
+    ? normalizeRequest({
+        id: latestUserMessage.id,
+        text: latestUserMessage.content,
+      })
+    : undefined;
+  const explicitAttendeeNames =
+    normalizedLatestMessage?.entities.selectedPersonNames.length
+      ? normalizedLatestMessage.entities.selectedPersonNames
+      : (normalizedLatestMessage?.entities.personNames ?? []);
+  const explicitCcNames =
+    normalizedLatestMessage?.entities.selectedCcNames.length
+      ? normalizedLatestMessage.entities.selectedCcNames
+      : (normalizedLatestMessage?.entities.ccPersonNames ?? []);
+  const explicitAttendeeIds = normalizedLatestMessage?.entities.selectedPersonIds ?? [];
+  const explicitCcIds = normalizedLatestMessage?.entities.selectedCcIds ?? [];
 
   if (!latestTodo) {
     return {
@@ -150,14 +188,14 @@ export async function runScheduleSkill(
     title: latestTodo.title,
     startDate: extractDate(latestTodo.content, "start") ?? "",
     endDate: extractDate(latestTodo.content, "end") ?? "",
-    attendeeNameQueries: attendeeNames,
-    ccNameQueries: ccNames,
+    attendeeNameQueries: explicitAttendeeNames.length > 0 ? explicitAttendeeNames : [],
+    ccNameQueries: explicitCcNames.length > 0 ? explicitCcNames : [],
     meetingRoom: findRecentValue(recentEvent, "meetingRoom"),
     videoMeetingCode: findRecentValue(recentEvent, "videoMeetingCode"),
-    selectedAttendeeNames: [],
-    selectedAttendeeIds: [],
-    selectedCcNames: [],
-    selectedCcIds: [],
+    selectedAttendeeNames: explicitAttendeeNames.length > 0 ? explicitAttendeeNames : [],
+    selectedAttendeeIds: explicitAttendeeIds,
+    selectedCcNames: explicitCcNames.length > 0 ? explicitCcNames : [],
+    selectedCcIds: explicitCcIds,
     suggestionSource: "recent_todo",
     suggestionSummary: "已根据最近一条待办消息生成新增日程推荐内容。",
   };
@@ -184,14 +222,14 @@ export async function runScheduleSkill(
       source: "recent_todo",
     });
   }
-  if (draft.attendeeNameQueries && draft.attendeeNameQueries.length > 0) {
+  if (explicitAttendeeNames.length === 0 && draft.attendeeNameQueries && draft.attendeeNameQueries.length > 0) {
     recommendedFields.push({
       fieldLabel: "参会人",
       value: draft.attendeeNameQueries.join("、"),
       source: "recent_todo",
     });
   }
-  if (draft.ccNameQueries && draft.ccNameQueries.length > 0) {
+  if (explicitCcNames.length === 0 && draft.ccNameQueries && draft.ccNameQueries.length > 0) {
     recommendedFields.push({
       fieldLabel: "抄送人",
       value: draft.ccNameQueries.join("、"),
@@ -213,27 +251,71 @@ export async function runScheduleSkill(
     });
   }
 
-  if (draft.attendeeNameQueries?.length === 0) {
-    const recentAttendees = findRecentValue(recentEvent, "attendees");
-    if (recentAttendees) {
-      draft.attendeeNameQueries = recentAttendees.split("、").filter(Boolean);
+  if (explicitAttendeeNames.length === 0 && draft.attendeeNameQueries?.length === 0) {
+    const cachedAttendees = findCachedValue(latestCache, "attendees");
+    if (cachedAttendees) {
+      draft.selectedAttendeeNames = latestCache?.attendeeNames ?? [];
+      draft.selectedAttendeeIds = latestCache?.attendeeIds ?? [];
       recommendedFields.push({
         fieldLabel: "参会人",
-        value: recentAttendees,
-        source: "recent_event",
+        value: cachedAttendees,
+        source: "cache",
       });
     }
   }
 
-  if (draft.ccNameQueries?.length === 0) {
-    const recentCc = findRecentValue(recentEvent, "ccRecipients");
-    if (recentCc) {
-      draft.ccNameQueries = recentCc.split("、").filter(Boolean);
+  if (explicitAttendeeNames.length === 0 && draft.attendeeNameQueries?.length === 0 && draft.selectedAttendeeNames?.length === 0) {
+    if (attendeeNames.length > 0) {
+      draft.attendeeNameQueries = attendeeNames;
+      recommendedFields.push({
+        fieldLabel: "参会人",
+        value: attendeeNames.join("、"),
+        source: "recent_todo",
+      });
+    } else {
+      const recentAttendees = findRecentValue(recentEvent, "attendees");
+      if (recentAttendees) {
+        draft.attendeeNameQueries = recentAttendees.split("、").filter(Boolean);
+        recommendedFields.push({
+          fieldLabel: "参会人",
+          value: recentAttendees,
+          source: "recent_event",
+        });
+      }
+    }
+  }
+
+  if (explicitCcNames.length === 0 && draft.ccNameQueries?.length === 0) {
+    const cachedCc = findCachedValue(latestCache, "ccRecipients");
+    if (cachedCc) {
+      draft.selectedCcNames = latestCache?.ccNames ?? [];
+      draft.selectedCcIds = latestCache?.ccIds ?? [];
       recommendedFields.push({
         fieldLabel: "抄送人",
-        value: recentCc,
-        source: "recent_event",
+        value: cachedCc,
+        source: "cache",
       });
+    }
+  }
+
+  if (explicitCcNames.length === 0 && draft.ccNameQueries?.length === 0 && draft.selectedCcNames?.length === 0) {
+    if (ccNames.length > 0) {
+      draft.ccNameQueries = ccNames;
+      recommendedFields.push({
+        fieldLabel: "抄送人",
+        value: ccNames.join("、"),
+        source: "recent_todo",
+      });
+    } else {
+      const recentCc = findRecentValue(recentEvent, "ccRecipients");
+      if (recentCc) {
+        draft.ccNameQueries = recentCc.split("、").filter(Boolean);
+        recommendedFields.push({
+          fieldLabel: "抄送人",
+          value: recentCc,
+          source: "recent_event",
+        });
+      }
     }
   }
 
@@ -244,7 +326,7 @@ export async function runScheduleSkill(
 
   const recommendation: ScheduleRecommendation = {
     summary:
-      "已优先读取最近一条待办消息推荐主题和时间；待办缺失的会议室、视频会议号、参会人或抄送人，已尝试用最近创建日程的字段补齐。",
+      "参会人和抄送人的推荐优先级为：用户本次明确描述 > 7 天内有效缓存 > 待办消息 > 最近创建日程；主题和时间仍优先读取最近一条待办消息。",
     sourceTodoTitle: latestTodo.title,
     sourceTodoSummary: latestTodo.content,
     recommendedFields,

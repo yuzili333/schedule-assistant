@@ -11,6 +11,10 @@ import {
   ToolDefinition,
 } from "../router";
 import { McpClient } from "../mcp";
+import {
+  cacheCalendarSubmission,
+  getLatestValidCalendarSubmission,
+} from "./storage";
 
 export interface ToolExecutionContext {
   decision: RouteDecision;
@@ -170,6 +174,59 @@ export const createCalendarEventExecutor: ToolExecutor = {
       };
     }
 
+    const hasExplicitPeopleInput =
+      decision.extractedParams.personNames.length > 0 ||
+      decision.extractedParams.ccPersonNames.length > 0 ||
+      decision.extractedParams.selectedPersonNames.length > 0 ||
+      decision.extractedParams.selectedCcNames.length > 0;
+
+    if (!hasExplicitPeopleInput) {
+      const latestCache = getLatestValidCalendarSubmission();
+      if (latestCache) {
+        const cachedDraft: CreateCalendarDraft = {
+          ...draft,
+          selectedAttendeeNames: latestCache.attendeeNames,
+          selectedAttendeeIds: latestCache.attendeeIds,
+          selectedCcNames: latestCache.ccNames,
+          selectedCcIds: latestCache.ccIds,
+          suggestionSource: "cache",
+          suggestionSummary: "已从 7 天内有效的新增日程缓存中提取参会人和抄送人推荐数据。",
+        };
+
+        return {
+          content:
+            "检测到你本次未显式填写参会人或抄送人。已从最近 7 天内有效的新增日程缓存中提取推荐名单，请确认是否采纳这些参会人、抄送人数据。",
+          status: "preview",
+          metadata: {
+            draft: cachedDraft,
+            recommendation: {
+              summary:
+                "当前未检测到新的参会人或抄送人输入，系统已优先读取最近 7 天内有效的新增日程缓存作为推荐名单。",
+              sourceTodoTitle: "新增日程缓存",
+              sourceTodoSummary: "来自历史已确认提交的新增日程数据。",
+              recommendedFields: [
+                ...(latestCache.attendeeNames.length > 0
+                  ? [{
+                      fieldLabel: "参会人",
+                      value: latestCache.attendeeNames.join("、"),
+                      source: "cache" as const,
+                    }]
+                  : []),
+                ...(latestCache.ccNames.length > 0
+                  ? [{
+                      fieldLabel: "抄送人",
+                      value: latestCache.ccNames.join("、"),
+                      source: "cache" as const,
+                    }]
+                  : []),
+              ],
+              needsUserConfirm: true,
+            },
+          },
+        };
+      }
+    }
+
     const unresolvedAttendeeNames = decision.extractedParams.personNames.filter(
       (name) => !decision.extractedParams.selectedPersonNames.includes(name),
     );
@@ -214,6 +271,13 @@ export const createCalendarEventExecutor: ToolExecutor = {
         recipients: joinRecipients(decision.extractedParams),
         ccRecipients: joinCcRecipients(decision.extractedParams),
       },
+    });
+
+    cacheCalendarSubmission({
+      attendeeNames: decision.extractedParams.selectedPersonNames,
+      attendeeIds: decision.extractedParams.selectedPersonIds,
+      ccNames: decision.extractedParams.selectedCcNames,
+      ccIds: decision.extractedParams.selectedCcIds,
     });
 
     return {

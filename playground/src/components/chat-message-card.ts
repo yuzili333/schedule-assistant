@@ -249,7 +249,11 @@ export class ChatMessageCardElement extends LitElement {
                           (field) => html`
                             <div>
                               ${field.fieldLabel}：${field.value}
-                              （${field.source === "recent_todo" ? "近期待办" : "最近日程"}）
+                              （${field.source === "recent_todo"
+                                ? "近期待办"
+                                : field.source === "cache"
+                                  ? "7天缓存"
+                                  : "最近日程"}）
                             </div>
                           `,
                         )}

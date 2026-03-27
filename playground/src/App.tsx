@@ -24,7 +24,6 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
 
 const suggestionPrompts = [
   "查询今天有哪些日程",
-  "创建日程\n主题：项目例会\n开始日期：2026-03-26\n结束日期：2026-03-26\n参会人：张三",
 ];
 
 function createMessage(
@@ -445,7 +444,7 @@ export default function App() {
                 className="h-[44px] flex-1 resize-none bg-transparent px-2 py-[10px] text-[15px] leading-6 text-[var(--text)] outline-none placeholder:text-[var(--subtle)]"
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
-                placeholder={"请创建一个新的日程。"}
+                placeholder={"创建一个新的日程"}
                 ref={textareaRef}
                 rows={1}
                 value={input}

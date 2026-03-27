@@ -1,4 +1,4 @@
-import { ModelSettings } from "../types";
+import { CachedCalendarSubmission, ModelSettings } from "../types";
 
 interface ModelRegistryItem {
   provider: string;
@@ -17,6 +17,9 @@ const FALLBACK_MODEL_REGISTRY: Record<string, ModelRegistryItem> = {
     model: "Qwen/Qwen3-32B",
   },
 };
+
+const CALENDAR_SUBMISSION_CACHE_KEY = "schedule_assistant_calendar_submission_cache_v1";
+const CALENDAR_SUBMISSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function parseModelRegistry(): Record<string, ModelRegistryItem> {
   const raw = import.meta.env.PUBLIC_MODEL_REGISTRY_JSON?.trim();
@@ -71,6 +74,92 @@ export const defaultModelSettings: ModelSettings = {
 };
 
 export function loadModelSettings(): ModelSettings {
-  console.log(defaultModelSettings)
   return defaultModelSettings;
+}
+
+function canUseLocalStorage(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function readCalendarSubmissionCache(): CachedCalendarSubmission[] {
+  if (!canUseLocalStorage()) {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(CALENDAR_SUBMISSION_CACHE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as CachedCalendarSubmission[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeCalendarSubmissionCache(entries: CachedCalendarSubmission[]): void {
+  if (!canUseLocalStorage()) {
+    return;
+  }
+
+  window.localStorage.setItem(
+    CALENDAR_SUBMISSION_CACHE_KEY,
+    JSON.stringify(entries),
+  );
+}
+
+export function loadValidCalendarSubmissionCache(
+  now = Date.now(),
+): CachedCalendarSubmission[] {
+  const validEntries = readCalendarSubmissionCache()
+    .filter((entry) => new Date(entry.expiresAt).getTime() > now)
+    .sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+
+  writeCalendarSubmissionCache(validEntries);
+  return validEntries;
+}
+
+export function getLatestValidCalendarSubmission(
+  now = Date.now(),
+): CachedCalendarSubmission | undefined {
+  return loadValidCalendarSubmissionCache(now)[0];
+}
+
+export function cacheCalendarSubmission(params: {
+  attendeeNames?: string[];
+  attendeeIds?: string[];
+  ccNames?: string[];
+  ccIds?: string[];
+  now?: number;
+}): CachedCalendarSubmission | undefined {
+  const attendeeNames = params.attendeeNames?.filter(Boolean) ?? [];
+  const attendeeIds = params.attendeeIds?.filter(Boolean) ?? [];
+  const ccNames = params.ccNames?.filter(Boolean) ?? [];
+  const ccIds = params.ccIds?.filter(Boolean) ?? [];
+
+  if (
+    attendeeNames.length === 0 &&
+    attendeeIds.length === 0 &&
+    ccNames.length === 0 &&
+    ccIds.length === 0
+  ) {
+    return undefined;
+  }
+
+  const now = params.now ?? Date.now();
+  const entry: CachedCalendarSubmission = {
+    id: `calendar-cache-${now}`,
+    savedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + CALENDAR_SUBMISSION_TTL_MS).toISOString(),
+    attendeeNames,
+    attendeeIds,
+    ccNames,
+    ccIds,
+  };
+
+  const nextEntries = [entry, ...loadValidCalendarSubmissionCache(now)].slice(0, 20);
+  writeCalendarSubmissionCache(nextEntries);
+  return entry;
 }

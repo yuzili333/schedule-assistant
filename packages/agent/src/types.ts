@@ -49,14 +49,14 @@ export interface CreateCalendarDraft {
   selectedAttendeeNames?: string[];
   selectedCcIds?: string[];
   selectedCcNames?: string[];
-  suggestionSource?: "recent_todo" | "recent_event";
+  suggestionSource?: "recent_todo" | "recent_event" | "cache";
   suggestionSummary?: string;
 }
 
 export interface RecommendationField {
   fieldLabel: string;
   value: string;
-  source: "recent_todo" | "recent_event";
+  source: "recent_todo" | "recent_event" | "cache";
 }
 
 export interface ScheduleRecommendation {
@@ -72,6 +72,16 @@ export interface AgentResultMetadata {
   draft?: CreateCalendarDraft;
   queriedEvents?: CalendarEventRecord[];
   recommendation?: ScheduleRecommendation;
+}
+
+export interface CachedCalendarSubmission {
+  id: string;
+  savedAt: string;
+  expiresAt: string;
+  attendeeNames: string[];
+  attendeeIds: string[];
+  ccNames: string[];
+  ccIds: string[];
 }
 
 export interface ModelSettings {
