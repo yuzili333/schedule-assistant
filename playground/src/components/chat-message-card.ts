@@ -31,16 +31,16 @@ export class ChatMessageCardElement extends LitElement {
 
     article {
       border-radius: 22px;
-      border: 1px solid rgba(112, 90, 61, 0.16);
+      border: 1px solid var(--line);
       padding: 16px 18px;
-      background: rgba(255, 251, 245, 0.86);
-      color: #2f2418;
-      box-shadow: 0 12px 34px rgba(92, 62, 23, 0.08);
+      background: var(--panel-strong);
+      color: var(--text);
+      box-shadow: 0 12px 34px rgba(36, 41, 51, 0.06);
     }
 
     article.user {
-      background: linear-gradient(135deg, rgba(164, 75, 26, 0.96), rgba(126, 52, 16, 0.96));
-      color: #fff6eb;
+      background: linear-gradient(135deg, var(--brand), var(--brand-deep));
+      color: #ffffff;
     }
 
     header {
@@ -71,12 +71,12 @@ export class ChatMessageCardElement extends LitElement {
       width: 0.7ch;
       margin-left: 2px;
       animation: blink 1s steps(1, end) infinite;
-      color: #a44b1a;
+      color: var(--brand);
       font-weight: 700;
     }
 
     article.user .cursor {
-      color: #fff6eb;
+      color: #ffffff;
     }
 
     .meta {
@@ -95,8 +95,8 @@ export class ChatMessageCardElement extends LitElement {
     .recommendation {
       margin-top: 14px;
       border-radius: 18px;
-      border: 1px solid rgba(112, 90, 61, 0.16);
-      background: rgba(250, 242, 227, 0.92);
+      border: 1px solid rgba(39, 154, 255, 0.18);
+      background: rgba(39, 154, 255, 0.06);
       padding: 14px;
     }
 
@@ -110,16 +110,16 @@ export class ChatMessageCardElement extends LitElement {
       display: grid;
       gap: 6px;
       font-size: 12px;
-      color: #705a3d;
+      color: var(--muted);
       line-height: 1.5;
     }
 
     .recommendation-action {
       margin-top: 12px;
       border-radius: 999px;
-      border: 1px solid #a44b1a;
-      background: #a44b1a;
-      color: #fff6eb;
+      border: 1px solid var(--brand);
+      background: var(--brand);
+      color: #ffffff;
       padding: 8px 14px;
       font-size: 12px;
       cursor: pointer;
@@ -127,8 +127,8 @@ export class ChatMessageCardElement extends LitElement {
 
     .candidate-card {
       border-radius: 18px;
-      border: 1px solid rgba(112, 90, 61, 0.16);
-      background: rgba(250, 242, 227, 0.92);
+      border: 1px solid var(--line);
+      background: var(--bg);
       padding: 12px 14px;
       text-align: left;
       cursor: pointer;
@@ -136,7 +136,7 @@ export class ChatMessageCardElement extends LitElement {
     }
 
     .candidate-card:hover {
-      border-color: #a44b1a;
+      border-color: var(--hint);
       transform: translateY(-1px);
     }
 
@@ -147,7 +147,7 @@ export class ChatMessageCardElement extends LitElement {
 
     .candidate-sub {
       margin-top: 4px;
-      color: #705a3d;
+      color: var(--muted);
       font-size: 12px;
       line-height: 1.5;
     }
@@ -156,13 +156,14 @@ export class ChatMessageCardElement extends LitElement {
       border-radius: 999px;
       padding: 5px 9px;
       font-size: 11px;
-      border: 1px solid rgba(112, 90, 61, 0.14);
-      background: rgba(243, 232, 212, 0.8);
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--subtle);
     }
 
     article.user .badge {
-      border-color: rgba(255, 246, 235, 0.2);
-      background: rgba(255, 246, 235, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.12);
       color: inherit;
     }
 

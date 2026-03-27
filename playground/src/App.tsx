@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
   type CreateCalendarDraft,
   loadModelSettings,
@@ -9,10 +9,22 @@ import {
 import { ChatMessageCard } from "./components/ChatMessageCard";
 import { ChatItem } from "./types/chat";
 
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
+
 const suggestionPrompts = [
-  "查询今天有哪些会议",
-  "创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n参会人：张三",
-  "创建日程\n主题：版本复盘\n开始日期：2026-03-27 10:00\n结束日期：2026-03-27 11:30\n会议室：6F Maple",
+  "查询今天有哪些日程",
+  "创建日程\n主题：项目例会\n开始日期：2026-03-26\n结束日期：2026-03-26\n参会人：张三",
 ];
 
 function createMessage(
@@ -35,6 +47,7 @@ function createMessage(
 export default function App() {
   const [input, setInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [settings] = useState<ModelSettings>(() => loadModelSettings());
   const [messages, setMessages] = useState<ChatItem[]>([
     createMessage(
@@ -50,6 +63,8 @@ export default function App() {
     ),
   ]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const messagesRef = useRef(messages);
 
   useEffect(() => {
@@ -62,6 +77,15 @@ export default function App() {
       behavior: "smooth",
     });
   }, [messages]);
+
+  useEffect(() => {
+    if (!textareaRef.current) {
+      return;
+    }
+
+    textareaRef.current.style.height = "0px";
+    textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+  }, [input]);
 
   const canSubmit = input.trim().length > 0 && !isSubmitting;
 
@@ -277,22 +301,71 @@ export default function App() {
     await submitUserContent(input.trim());
   }
 
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key !== "Enter" || event.shiftKey) {
+      return;
+    }
+
+    event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+
+    void submitUserContent(input.trim());
+  }
+
+  function handleVoiceInput(): void {
+    const SpeechRecognition =
+      (window as Window & {
+        SpeechRecognition?: SpeechRecognitionCtor;
+        webkitSpeechRecognition?: SpeechRecognitionCtor;
+      }).SpeechRecognition ??
+      (window as Window & {
+        webkitSpeechRecognition?: SpeechRecognitionCtor;
+      }).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      window.alert("当前浏览器不支持语音识别，请改用文本输入。");
+      return;
+    }
+
+    if (isRecording) {
+      recognitionRef.current?.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "zh-CN";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .flatMap((result) => Array.from(result))
+        .map((item) => item.transcript)
+        .join("");
+      setInput((current) => `${current}${current ? "\n" : ""}${transcript}`.trim());
+    };
+    recognition.onerror = () => {
+      setIsRecording(false);
+    };
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    setIsRecording(true);
+    recognition.start();
+  }
+
   return (
-    <div className="min-h-screen px-4 py-6 text-[var(--text)] md:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[88vh] max-w-6xl flex-col overflow-hidden rounded-[32px] border border-[var(--line)] bg-[rgba(255,250,241,0.72)] shadow-[0_24px_70px_rgba(92,62,23,0.12)] backdrop-blur-xl">
+    <div className="min-h-screen px-4 py-4 text-[var(--text)] md:px-6 md:py-5 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-6xl flex-col overflow-hidden rounded-[32px] border border-[var(--line)] bg-[var(--panel-strong)] shadow-[0_24px_70px_rgba(36,41,51,0.08)] md:min-h-[calc(100vh-2.5rem)]">
         <div className="border-b border-[var(--line)] px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-[var(--brand)]">
-                Schedule AI Assistant
-              </div>
-              <h1 className="mt-2 text-2xl font-semibold text-[var(--text)]">
-                日程助手 Chatbox
-              </h1>
-            </div>
-            <div className="rounded-full border border-[var(--line)] bg-[rgba(255,250,241,0.88)] px-4 py-2 text-sm text-[var(--muted)]">
+            <div className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm text-[var(--muted)]">
               {settings.enabled && settings.baseUrl
-                ? `Model Gateway: ${settings.label} · ${settings.model}`
+                ? `Model Gateway: ${settings.model}`
                 : "Model Gateway: mock runtime"}
             </div>
           </div>
@@ -300,7 +373,7 @@ export default function App() {
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {suggestionPrompts.map((prompt) => (
               <button
-                className="rounded-full border border-[var(--line)] bg-[rgba(255,250,241,0.9)] px-4 py-2 text-sm transition hover:border-[var(--brand)] hover:text-[var(--brand)]"
+                className="text-left rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm text-[var(--muted)] transition hover:border-[var(--hint)] hover:bg-[rgba(39,154,255,0.08)] hover:text-[var(--brand)]"
                 key={prompt}
                 onClick={() => setInput(prompt)}
                 type="button"
@@ -338,25 +411,68 @@ export default function App() {
           </div>
         </div>
 
-        <form
-          className="border-t border-[var(--line)] bg-[rgba(255,250,241,0.52)] p-4 md:p-6"
-          onSubmit={handleSubmit}
-        >
+        <form className="border-t border-[var(--line)] bg-[var(--bg)] p-4 md:p-6" onSubmit={handleSubmit}>
           <div className="mx-auto max-w-4xl">
-            <textarea
-              className="min-h-32 w-full rounded-[28px] border border-[var(--line)] bg-[rgba(255,250,241,0.92)] px-5 py-4 text-base outline-none transition focus:border-[var(--brand)]"
-              onChange={(event) => setInput(event.target.value)}
-              placeholder={"例如：创建日程\n主题：项目例会\n开始日期：2026-03-26 14:00\n结束日期：2026-03-26 15:00\n参会人：张三"}
-              value={input}
-            />
-            <div className="mt-3 flex items-center justify-between">
+            <div className="flex items-center gap-3 rounded-[28px] border border-[var(--line)] bg-[var(--panel-strong)] px-3 py-2 shadow-[0_10px_24px_rgba(36,41,51,0.04)] transition focus-within:border-[var(--brand)] focus-within:shadow-[0_0_0_4px_rgba(39,154,255,0.12)]">
               <button
-                className="rounded-full bg-[var(--brand)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--brand-deep)] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={isRecording ? "停止语音输入" : "开始语音输入"}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+                  isRecording
+                    ? "border-[var(--success)] bg-[rgba(6,198,135,0.12)] text-[var(--success)]"
+                    : "border-[var(--line)] bg-[var(--bg)] text-[var(--muted)] hover:border-[var(--hint)] hover:text-[var(--brand)]"
+                }`}
+                onClick={handleVoiceInput}
+                type="button"
+              >
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  width="18"
+                >
+                  <path
+                    d="M12 3a3 3 0 0 1 3 3v6a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3Z"
+                    fill="currentColor"
+                  />
+                  <path
+                    d="M5 11a1 1 0 1 1 2 0 5 5 0 1 0 10 0 1 1 0 1 1 2 0 7.01 7.01 0 0 1-6 6.93V21h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-3.07A7.01 7.01 0 0 1 5 11Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+              <textarea
+                className="h-[44px] flex-1 resize-none bg-transparent px-2 py-[10px] text-[15px] leading-6 text-[var(--text)] outline-none placeholder:text-[var(--subtle)]"
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                placeholder={"请创建一个新的日程。"}
+                ref={textareaRef}
+                rows={1}
+                value={input}
+              />
+              <button
+                aria-label="发送消息"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand)] text-white shadow-[0_10px_24px_rgba(27,85,255,0.2)] transition hover:bg-[var(--brand-deep)] disabled:cursor-not-allowed disabled:bg-[var(--subtle)] disabled:shadow-none disabled:opacity-80"
                 disabled={!canSubmit}
                 type="submit"
               >
-                {isSubmitting ? "处理中..." : "发送"}
+                <svg
+                  aria-hidden="true"
+                  fill="none"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  width="18"
+                >
+                  <path
+                    d="M4 12 19 5l-3 7 3 7-15-7Z"
+                    fill="currentColor"
+                  />
+                </svg>
               </button>
+            </div>
+            <div className="mt-3 flex items-center justify-between px-1 text-xs text-[var(--subtle)]">
+              <span>{isRecording ? "语音输入中..." : "支持文本输入与浏览器语音输入"}</span>
+              <span>{isSubmitting ? "处理中..." : "Enter 发送，Shift+Enter 换行"}</span>
             </div>
           </div>
         </form>

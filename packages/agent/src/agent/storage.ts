@@ -9,13 +9,6 @@ interface ModelRegistryItem {
 }
 
 const FALLBACK_MODEL_REGISTRY: Record<string, ModelRegistryItem> = {
-  GPT: {
-    provider: "GPT",
-    label: "GPT",
-    baseUrl: "",
-    apiKey: "",
-    model: "gpt-4o-mini",
-  },
   QWEN: {
     provider: "QWEN",
     label: "Qwen/Qwen3-32B",
@@ -78,5 +71,6 @@ export const defaultModelSettings: ModelSettings = {
 };
 
 export function loadModelSettings(): ModelSettings {
+  console.log(defaultModelSettings)
   return defaultModelSettings;
 }
