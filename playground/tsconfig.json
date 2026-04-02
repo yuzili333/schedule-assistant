@@ -6,10 +6,7 @@
     "experimentalDecorators": true,
     "jsx": "react-jsx",
     "types": ["vitest/globals", "@testing-library/jest-dom"],
-    "baseUrl": ".",
-    "paths": {
-      "@schedule-assistant/agent": ["../packages/agent/src/index.ts"]
-    }
+    "baseUrl": "."
   },
   "include": ["src", "rsbuild.config.ts"]
 }

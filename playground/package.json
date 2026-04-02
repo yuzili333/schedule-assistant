@@ -12,7 +12,6 @@
     "lint:fix": "oxlint . --tsconfig ./tsconfig.json --fix"
   },
   "dependencies": {
-    "@schedule-assistant/agent": "workspace:*",
     "lit": "^3.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

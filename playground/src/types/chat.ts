@@ -1,9 +1,8 @@
 import type {
   CreateCalendarDraft,
-  ModelSettings as AgentModelSettings,
   PersonLookupCandidate,
   ScheduleRecommendation,
-} from "@schedule-assistant/agent";
+} from "../lib/agent-schema";
 
 export type SenderRole = "user" | "assistant" | "system";
 
@@ -26,5 +25,3 @@ export interface ChatItem {
   meta?: ChatCardMeta;
   isStreaming?: boolean;
 }
-
-export type ModelSettings = AgentModelSettings;

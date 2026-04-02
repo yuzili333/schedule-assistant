@@ -1,8 +1,13 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, describe, expect, it } from "vitest";
 import {
   cacheCalendarSubmission,
   getLatestValidCalendarSubmission,
   loadValidCalendarSubmissionCache,
+  loadModelSettings,
 } from "./storage";
 
 function installLocalStorageMock() {
@@ -32,6 +37,11 @@ afterEach(() => {
     configurable: true,
     value: undefined,
   });
+  delete process.env.AGENT_SERVICE_ENV_FILE;
+  delete process.env.PUBLIC_MODEL_ENABLED;
+  delete process.env.PUBLIC_MODEL_ACTIVE;
+  delete process.env.PUBLIC_MODEL_REGISTRY_JSON;
+  delete process.env.PUBLIC_MODEL_SYSTEM_PROMPT;
 });
 
 describe("calendar submission cache", () => {
@@ -63,5 +73,33 @@ describe("calendar submission cache", () => {
     });
 
     expect(loadValidCalendarSubmissionCache(now)).toHaveLength(0);
+  });
+});
+
+describe("model settings env resolution", () => {
+  it("falls back to local agent-service env file when process env is missing", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "schedule-agent-env-"));
+    const envFilePath = path.join(tempDir, ".env.local");
+    fs.writeFileSync(
+      envFilePath,
+      [
+        "PUBLIC_MODEL_ENABLED=true",
+        "PUBLIC_MODEL_ACTIVE=QWEN",
+        'PUBLIC_MODEL_REGISTRY_JSON={"QWEN":{"provider":"QWEN","label":"Qwen/Qwen3-32B","baseUrl":"https://example.com/v1/chat/completions","apiKey":"test-key","model":"Qwen/Qwen3-32B"}}',
+        "PUBLIC_MODEL_SYSTEM_PROMPT=测试系统提示词",
+      ].join("\n"),
+      "utf8",
+    );
+
+    process.env.AGENT_SERVICE_ENV_FILE = envFilePath;
+
+    const settings = loadModelSettings();
+    expect(settings.enabled).toBe(true);
+    expect(settings.provider).toBe("QWEN");
+    expect(settings.model).toBe("Qwen/Qwen3-32B");
+    expect(settings.baseUrl).toBe("https://example.com/v1/chat/completions");
+    expect(settings.systemPrompt).toBe("测试系统提示词");
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });

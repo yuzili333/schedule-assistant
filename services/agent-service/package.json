@@ -1,0 +1,24 @@
+{
+  "name": "@schedule-assistant/agent-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node ./dist/bin/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "lint": "oxlint . --tsconfig ./tsconfig.json",
+    "lint:fix": "oxlint . --tsconfig ./tsconfig.json --fix"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "serverless-http": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.19.15",
+    "oxlint": "^1.57.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

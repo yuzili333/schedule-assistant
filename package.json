@@ -5,6 +5,8 @@
   "packageManager": "pnpm@10.26.0",
   "scripts": {
     "dev": "pnpm --filter playground dev",
+    "dev:playground": "pnpm --filter playground dev",
+    "dev:service": "pnpm --filter @schedule-assistant/agent-service build && pnpm --filter @schedule-assistant/agent-service dev",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
     "lint": "pnpm -r --if-present lint",

@@ -1,0 +1,29 @@
+[build]
+command = "pnpm build"
+publish = "playground/dist"
+functions = "services/agent-service/netlify/functions"
+
+[build.environment]
+NODE_VERSION = "20"
+NPM_FLAGS = "--version"
+
+[functions]
+node_bundler = "esbuild"
+external_node_modules = ["express", "serverless-http"]
+
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/agent/:splat"
+status = 200
+force = true
+
+[[redirects]]
+from = "/health"
+to = "/.netlify/functions/agent/health"
+status = 200
+force = true
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200

@@ -1,4 +1,5 @@
 export * from "./types";
+export * from "./service-protocol";
 export * from "./agent/runtime";
 export * from "./agent/skill-runtime";
 export * from "./agent/storage";

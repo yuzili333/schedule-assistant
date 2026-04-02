@@ -1,12 +1,11 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import {
+  type AgentMessage,
   type CreateCalendarDraft,
-  loadModelSettings,
   type PersonLookupCandidate,
-  runScheduleAgent,
-  type ModelSettings,
-} from "@schedule-assistant/agent";
+} from "./lib/agent-schema";
 import { ChatMessageCard } from "./components/ChatMessageCard";
+import { getAgentServiceBaseUrl, streamAgentResponse } from "./lib/agent-service";
 import { ChatItem } from "./types/chat";
 
 interface SpeechRecognitionInstance {
@@ -47,7 +46,6 @@ export default function App() {
   const [input, setInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [settings] = useState<ModelSettings>(() => loadModelSettings());
   const [messages, setMessages] = useState<ChatItem[]>([
     createMessage(
       "assistant",
@@ -57,7 +55,7 @@ export default function App() {
         confidence: 1,
         latencyMs: 0,
         requiresConfirm: false,
-        target: "agent_bootstrap",
+        target: "agent_service_bootstrap",
       },
     ),
   ]);
@@ -65,6 +63,8 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const messagesRef = useRef(messages);
+  const sessionIdRef = useRef(`session-${crypto.randomUUID()}`);
+  const agentServiceBaseUrl = getAgentServiceBaseUrl();
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -132,8 +132,16 @@ export default function App() {
 
     try {
       const nextMessages = [...messagesRef.current, userMessage];
-      const result = await runScheduleAgent(nextMessages, settings, (chunk) => {
-        appendAssistantChunk(assistantMessage.id, chunk);
+      const result = await streamAgentResponse({
+        messages: nextMessages.map<AgentMessage>((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+        })),
+        sessionId: sessionIdRef.current,
+        onChunk: (chunk) => {
+          appendAssistantChunk(assistantMessage.id, chunk);
+        },
       });
       finalizeAssistantMessage(assistantMessage.id, {
         route: result.decision.route,
@@ -150,14 +158,14 @@ export default function App() {
         assistantMessage.id,
         error instanceof Error
           ? error.message
-          : "模型请求失败，请检查接口地址和跨域策略。",
+          : "Agent service 请求失败，请检查服务地址和跨域策略。",
       );
       finalizeAssistantMessage(assistantMessage.id, {
         route: "error",
         confidence: 1,
         latencyMs: 0,
         requiresConfirm: false,
-        target: "model_gateway",
+        target: "agent_service",
       });
     } finally {
       setIsSubmitting(false);
@@ -363,9 +371,7 @@ export default function App() {
         <div className="border-b border-[var(--line)] px-6 py-5">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm text-[var(--muted)]">
-              {settings.enabled && settings.baseUrl
-                ? `Model Gateway: ${settings.model}`
-                : "Model Gateway: mock runtime"}
+              {`Agent Service: ${agentServiceBaseUrl}`}
             </div>
           </div>
 
